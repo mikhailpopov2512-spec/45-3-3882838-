@@ -1,0 +1,6 @@
+{
+  "name": "Happ VPN",
+  "description": "Полнофункциональный и оптимизированный VPN-клиент с поддержкой протоколов VLESS, VMess, Shadowsocks, Trojan, подписками, пингом и отображением IP-адреса.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
