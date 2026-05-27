@@ -14,11 +14,16 @@ import androidx.activity.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.screens.VpnMainScreen
 import com.example.ui.theme.HappVpnTheme
 import com.example.ui.viewmodel.VpnViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
 
@@ -37,6 +42,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val requestNotificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -53,14 +62,14 @@ class MainActivity : ComponentActivity() {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val requestNotificationPermission = registerForActivityResult(
-                ActivityResultContracts.RequestPermission()
-            ) { }
-            requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
 
         setContent {
-            HappVpnTheme {
+            val isDark by viewModel.isDarkTheme.collectAsStateWithLifecycle()
+            HappVpnTheme(isDarkTheme = isDark) {
                 VpnMainScreen(viewModel)
             }
         }

@@ -9,12 +9,26 @@ import java.net.URI
 object VpnLinkParser {
 
     fun parseSubscriptionContent(content: String, subscriptionUrl: String? = null): List<VpnProfileEntity> {
-        val decoded = try {
-            val cleanContent = content.trim().replace("\r", "").replace("\n", "")
-            val decodedBytes = Base64.decode(cleanContent, Base64.DEFAULT)
-            String(decodedBytes, Charsets.UTF_8)
-        } catch (e: Exception) {
+        val hasDirectLinks = content.contains("vless://", ignoreCase = true) || 
+                             content.contains("vmess://", ignoreCase = true) || 
+                             content.contains("ss://", ignoreCase = true) ||
+                             content.contains("trojan://", ignoreCase = true)
+
+        val decoded = if (hasDirectLinks) {
             content
+        } else {
+            try {
+                val cleanContent = content.trim().replace("\r", "").replace("\n", "").replace(" ", "")
+                val decodedBytes = Base64.decode(cleanContent, Base64.DEFAULT)
+                val decodedStr = String(decodedBytes, Charsets.UTF_8)
+                if (decodedStr.contains("://")) {
+                    decodedStr
+                } else {
+                    content
+                }
+            } catch (e: Exception) {
+                content
+            }
         }
 
         val profiles = mutableListOf<VpnProfileEntity>()

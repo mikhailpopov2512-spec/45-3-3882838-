@@ -22,29 +22,41 @@ class VpnRepository(private val dbHelper: VpnDatabaseHelper) {
 
     private val pingDispatcher = Executors.newFixedThreadPool(12).asCoroutineDispatcher()
 
-    fun insertProfile(profile: VpnProfileEntity) = dbHelper.insertProfile(profile)
+    suspend fun insertProfile(profile: VpnProfileEntity) = withContext(Dispatchers.IO) {
+        dbHelper.insertProfile(profile)
+    }
 
-    fun insertProfiles(profiles: List<VpnProfileEntity>) = dbHelper.insertProfiles(profiles)
+    suspend fun insertProfiles(profiles: List<VpnProfileEntity>) = withContext(Dispatchers.IO) {
+        dbHelper.insertProfiles(profiles)
+    }
 
-    fun deleteProfileById(id: Int) = dbHelper.deleteProfileById(id)
+    suspend fun deleteProfileById(id: Int) = withContext(Dispatchers.IO) {
+        dbHelper.deleteProfileById(id)
+    }
 
-    fun deleteUnreachableProfiles() = dbHelper.deleteUnreachableProfiles()
+    suspend fun deleteUnreachableProfiles() = withContext(Dispatchers.IO) {
+        dbHelper.deleteUnreachableProfiles()
+    }
 
-    fun deleteAllProfiles() = dbHelper.deleteAllProfiles()
+    suspend fun deleteAllProfiles() = withContext(Dispatchers.IO) {
+        dbHelper.deleteAllProfiles()
+    }
 
-    fun insertSubscription(subscription: SubscriptionEntity) = dbHelper.insertSubscription(subscription)
+    suspend fun insertSubscription(subscription: SubscriptionEntity) = withContext(Dispatchers.IO) {
+        dbHelper.insertSubscription(subscription)
+    }
 
-    fun deleteSubscriptionByUrl(url: String) {
+    suspend fun deleteSubscriptionByUrl(url: String) = withContext(Dispatchers.IO) {
         dbHelper.deleteProfilesBySubscription(url)
         dbHelper.deleteSubscriptionByUrl(url)
     }
 
-    suspend fun importFromText(text: String, subscriptionUrl: String? = null): Int {
+    suspend fun importFromText(text: String, subscriptionUrl: String? = null): Int = withContext(Dispatchers.IO) {
         val profiles = VpnLinkParser.parseSubscriptionContent(text, subscriptionUrl)
         if (profiles.isNotEmpty()) {
             dbHelper.insertProfiles(profiles)
         }
-        return profiles.size
+        profiles.size
     }
 
     suspend fun updateSubscription(subscriptionUrl: String, customName: String? = null) {

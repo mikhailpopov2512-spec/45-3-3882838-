@@ -4,9 +4,12 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 class VpnDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
@@ -67,8 +70,16 @@ class VpnDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     }
 
     fun refresh() {
-        _profilesFlow.value = getAllProfilesInternal()
-        _subscriptionsFlow.value = getAllSubscriptionsInternal()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val profiles = getAllProfilesInternal()
+                val subscriptions = getAllSubscriptionsInternal()
+                _profilesFlow.value = profiles
+                _subscriptionsFlow.value = subscriptions
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
     }
 
     private fun getAllProfilesInternal(): List<VpnProfileEntity> {
@@ -165,12 +176,24 @@ class VpnDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     }
 
     fun updatePing(id: Int, ping: Int) {
-        val db = writableDatabase
-        val values = ContentValues().apply {
-            put("ping", ping)
+        synchronized(this) {
+            try {
+                val db = writableDatabase
+                val values = ContentValues().apply {
+                    put("ping", ping)
+                }
+                db.update("vpn_profiles", values, "id = ?", arrayOf(id.toString()))
+            } catch (e: Exception) {
+                // ignore
+            }
+            val currentList = _profilesFlow.value
+            val index = currentList.indexOfFirst { it.id == id }
+            if (index != -1) {
+                val updated = currentList.toMutableList()
+                updated[index] = updated[index].copy(ping = ping)
+                _profilesFlow.value = updated
+            }
         }
-        db.update("vpn_profiles", values, "id = ?", arrayOf(id.toString()))
-        refresh()
     }
 
     fun deleteProfilesBySubscription(subscriptionUrl: String) {

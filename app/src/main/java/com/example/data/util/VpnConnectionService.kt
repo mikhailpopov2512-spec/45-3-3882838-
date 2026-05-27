@@ -67,8 +67,10 @@ class VpnConnectionService : VpnService() {
         val profileName = intent?.getStringExtra("profile_name") ?: "Happ VPN Server"
         
         if (action == "CONNECT") {
+            AppLogger.log(this, "SERVICE", "Получена команда CONNECT для узла: $profileName")
             startVpn(profileName)
         } else if (action == "DISCONNECT") {
+            AppLogger.log(this, "SERVICE", "Получена команда DISCONNECT")
             stopVpn()
         }
         return START_NOT_STICKY
@@ -78,6 +80,7 @@ class VpnConnectionService : VpnService() {
         stopVpn() // Reset state
         _connectionState.value = "Connecting"
         _connectedProfileName.value = profileName
+        AppLogger.log(this, "VPN_CONN", "Установка соединения с узлом: $profileName ...")
 
         startForeground(NOTIFICATION_ID, createNotification("Подключение к $profileName..."))
 
@@ -106,11 +109,13 @@ class VpnConnectionService : VpnService() {
                 if (vpnInterface == null) {
                     _connectionState.value = "Disconnected"
                     _connectedProfileName.value = null
+                    AppLogger.log(this@VpnConnectionService, "VPN_CONN", "Ошибка: не удалось создать виртуальный туннель (null interface)")
                     stopSelf()
                     return@launch
                 }
 
                 _connectionState.value = "Connected"
+                AppLogger.log(this@VpnConnectionService, "VPN_CONN", "Туннель успешно запущен! Локальный IP-адрес: 10.0.0.2")
                 updateNotification("Happ VPN: Подключено к $profileName")
 
                 launch(Dispatchers.IO) {
@@ -123,6 +128,7 @@ class VpnConnectionService : VpnService() {
 
             } catch (e: Exception) {
                 Log.e("VpnService", "Error starting VPN", e)
+                AppLogger.log(this@VpnConnectionService, "VPN_CONN", "Исключение при старте: ${e.message}")
                 _connectionState.value = "Disconnected"
                 _connectedProfileName.value = null
                 stopVpn()
@@ -169,6 +175,10 @@ class VpnConnectionService : VpnService() {
     }
 
     fun stopVpn() {
+        val prevName = _connectedProfileName.value
+        if (prevName != null) {
+            AppLogger.log(this, "VPN_CONN", "Отключение соединения от узла: $prevName")
+        }
         serviceJob?.cancel()
         serviceJob = null
         try {
