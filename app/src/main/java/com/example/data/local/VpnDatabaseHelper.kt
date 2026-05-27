@@ -282,6 +282,35 @@ class VpnDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         }
     }
 
+    fun getUserByUsername(username: String): UserAccountEntity? {
+        return try {
+            val db = readableDatabase
+            var user: UserAccountEntity? = null
+            val cursor = db.query(
+                "users_accounts",
+                null,
+                "username = ?",
+                arrayOf(username),
+                null, null, null
+            )
+            cursor.use { c ->
+                val userCol = c.getColumnIndex("username")
+                val roleCol = c.getColumnIndex("role")
+                val blockCol = c.getColumnIndex("is_blocked")
+                if (c.moveToFirst() && userCol != -1 && roleCol != -1 && blockCol != -1) {
+                    user = UserAccountEntity(
+                        username = c.getString(userCol),
+                        role = c.getString(roleCol),
+                        isBlocked = c.getInt(blockCol) == 1
+                    )
+                }
+            }
+            user
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun setUserBlockState(username: String, isBlocked: Boolean) {
         try {
             val db = writableDatabase

@@ -31,6 +31,13 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
     private val _loginUserAccount = MutableStateFlow<UserAccountEntity?>(null)
     val loginUserAccount: StateFlow<UserAccountEntity?> = _loginUserAccount
 
+    private val _rememberedUsersText = MutableStateFlow(
+        sharedPrefs.getString("remembered_logins_list", "Михаил Попов,Старший администратор,Младший администратор,Роскомнадзор") ?: "Михаил Попов,Старший администратор,Младший администратор,Роскомнадзор"
+    )
+    val rememberedUsersList: StateFlow<List<String>> = _rememberedUsersText.map { text ->
+        if (text.isBlank()) emptyList() else text.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf("Михаил Попов", "Старший администратор", "Младший администратор", "Роскомнадзор"))
+
     private val _captchaQuestion = MutableStateFlow("")
     val captchaQuestion: StateFlow<String> = _captchaQuestion
 

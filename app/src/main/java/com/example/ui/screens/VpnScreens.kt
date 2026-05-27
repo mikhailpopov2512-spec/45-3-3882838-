@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -2323,6 +2324,7 @@ fun AdminSupportPaneView(viewModel: VpnViewModel) {
     val supportMessages by viewModel.supportMessages.collectAsStateWithLifecycle()
     val captchaQuestion by viewModel.captchaQuestion.collectAsStateWithLifecycle()
     val captchaAnswer by viewModel.captchaAnswer.collectAsStateWithLifecycle()
+    val savedUsers by viewModel.savedUsers.collectAsStateWithLifecycle()
 
     var isRegisterTab by remember { mutableStateOf(false) }
     var username by remember { mutableStateOf("") }
@@ -2374,6 +2376,47 @@ fun AdminSupportPaneView(viewModel: VpnViewModel) {
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha=0.6f)),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(imageVector = Icons.Filled.AccountBox, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Text("Быстрое переключение профилей:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                                Text("Нажмите на любой аккаунт ниже для моментального входа без ввода пароля и капчи:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha=0.8f))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(savedUsers) { autoName ->
+                                        AssistChip(
+                                            onClick = {
+                                                viewModel.quickSwitchToUser(autoName, context)
+                                            },
+                                            label = {
+                                                Text(autoName, fontWeight = FontWeight.SemiBold)
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Person,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -2540,23 +2583,51 @@ fun AdminSupportPaneView(viewModel: VpnViewModel) {
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
-                            contentAlignment = Alignment.Center
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(user.username.take(2).uppercase(), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(user.username.take(2).uppercase(), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(user.username, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Text("Права: " + viewModel.getRoleLabel(role), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(user.username, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                            Text("Права: " + viewModel.getRoleLabel(role), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha=0.15f))
+                        
+                        Text("Быстрое переключение:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha=0.75f))
+                        
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(savedUsers.filter { it != user.username }) { autoName ->
+                                AssistChip(
+                                    onClick = {
+                                        viewModel.quickSwitchToUser(autoName, context)
+                                    },
+                                    label = {
+                                        Text(autoName, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Filled.Person,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
