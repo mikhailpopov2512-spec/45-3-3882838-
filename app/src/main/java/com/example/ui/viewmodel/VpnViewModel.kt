@@ -7,9 +7,7 @@ import android.net.VpnService
 import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.local.VpnDatabaseHelper
-import com.example.data.local.VpnProfileEntity
-import com.example.data.local.SubscriptionEntity
+import com.example.data.local.*
 import com.example.data.repository.VpnRepository
 import com.example.data.util.VpnConnectionService
 import com.example.data.util.AppLogger
@@ -18,11 +16,33 @@ import kotlinx.coroutines.launch
 
 class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val dbHelper = VpnDatabaseHelper.getInstance(application)
     private val repository: VpnRepository
     private val sharedPrefs = application.getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE)
 
-    val allSubscriptions: StateFlow<List<SubscriptionEntity>>
-    private val rawProfiles: StateFlow<List<VpnProfileEntity>>
+    val allSubscriptions: StateFlow<List<SubscriptionEntity>> = dbHelper.subscriptionsFlow
+    private val rawProfiles: StateFlow<List<VpnProfileEntity>> = dbHelper.profilesFlow
+
+    // Database reactive feeds
+    val allUsers: StateFlow<List<UserAccountEntity>> = dbHelper.usersFlow
+    val supportMessages: StateFlow<List<SupportMessageEntity>> = dbHelper.supportMessagesFlow
+    val announcements: StateFlow<List<AnnouncementEntity>> = dbHelper.announcementsFlow
+
+    private val _loginUserAccount = MutableStateFlow<UserAccountEntity?>(null)
+    val loginUserAccount: StateFlow<UserAccountEntity?> = _loginUserAccount
+
+    private val _captchaQuestion = MutableStateFlow("")
+    val captchaQuestion: StateFlow<String> = _captchaQuestion
+
+    private val _captchaAnswer = MutableStateFlow("")
+    val captchaAnswer: StateFlow<String> = _captchaAnswer
+
+    fun generateNewCaptcha() {
+        val a = (2..9).random()
+        val b = (2..9).random()
+        _captchaQuestion.value = "Решите простой пример: $a + $b"
+        _captchaAnswer.value = (a + b).toString()
+    }
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -299,16 +319,16 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
         AppLogger.init(application)
         AppLogger.log(application, "SYSTEM", "Приложение запущено. ViewModel успешно создана.")
         
-        val dbHelper = VpnDatabaseHelper.getInstance(application)
         repository = VpnRepository(dbHelper)
 
-        allSubscriptions = repository.allSubscriptions.stateIn(
-            viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-        )
+        // Restore login cache if exists
+        val cacheName = sharedPrefs.getString("user_name", null)
+        val cacheRole = sharedPrefs.getString("user_role", null)
+        if (cacheName != null && cacheRole != null) {
+            _loginUserAccount.value = UserAccountEntity(cacheName, cacheRole, cacheRole == "ROSKOMNADZOR")
+        }
 
-        rawProfiles = repository.allProfiles.stateIn(
-            viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
-        )
+        generateNewCaptcha()
     }
 
     val processedProfiles: StateFlow<List<VpnProfileEntity>> = combine(
@@ -523,5 +543,112 @@ class VpnViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearPermissionIntent() {
         _vpnPermissionIntent.value = null
+    }
+
+    // --- ADMIN & SUPPORT SYSTEM IMPLEMENTATION ---
+
+    fun adminLogin(username: String, pass: String, context: Context): Boolean {
+        val user = dbHelper.authenticateUser(username, pass)
+        if (user != null) {
+            if (user.isBlocked) {
+                Toast.makeText(context, "Имя пользователя заблокировано главным администратором Роскомнадзора!", Toast.LENGTH_LONG).show()
+                AppLogger.log(context, "AUTH", "Попытка входа в заблокированный аккаунт: ${user.username}")
+                return false
+            }
+            _loginUserAccount.value = user
+            _userProfile.value = UserProfile(
+                email = "${user.role.lowercase()}@meravpn.io",
+                username = user.username,
+                planType = getPlanForRole(user.role)
+            )
+            
+            sharedPrefs.edit()
+                .putString("user_email", "${user.role.lowercase()}@meravpn.io")
+                .putString("user_name", user.username)
+                .putString("user_role", user.role)
+                .apply()
+
+            Toast.makeText(context, "Добро пожаловать, ${user.username}!", Toast.LENGTH_SHORT).show()
+            AppLogger.log(context, "AUTH", "Успешная авторизация пользователя: ${user.username} [${user.role}]")
+            return true
+        } else {
+            Toast.makeText(context, "Неверный логин или пароль", Toast.LENGTH_SHORT).show()
+            return false
+        }
+    }
+
+    fun adminRegister(username: String, pass: String, role: String, context: Context): Boolean {
+        if (username.isBlank() || pass.isBlank()) {
+            Toast.makeText(context, "Логин и пароль не могут быть пустыми!", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        val isBlocked = (role == "ROSKOMNADZOR") // Seeding default blocked easter egg
+        val newUser = UserAccountEntity(username, role, isBlocked)
+        val success = dbHelper.insertUser(newUser, pass)
+        if (success) {
+            Toast.makeText(context, "Аккаунт $username ($role) зарегистрирован!", Toast.LENGTH_SHORT).show()
+            AppLogger.log(context, "AUTH", "Регистрация успешна: $username с ролью $role")
+            return true
+        } else {
+            Toast.makeText(context, "Ошибка: имя пользователя уже занято!", Toast.LENGTH_SHORT).show()
+            return false
+        }
+    }
+
+    fun adminLogout() {
+        _loginUserAccount.value = null
+        _userProfile.value = null
+        sharedPrefs.edit()
+            .remove("user_email")
+            .remove("user_name")
+            .remove("user_role")
+            .apply()
+    }
+
+    fun adminSetBlock(username: String, isBlocked: Boolean, context: Context) {
+        dbHelper.setUserBlockState(username, isBlocked)
+        Toast.makeText(context, "Статус блокировки $username изменен: " + if(isBlocked) "Блок" else "Активен", Toast.LENGTH_SHORT).show()
+        AppLogger.log(context, "ADMIN_CTRL", "Изменен статус блокировки пользователя $username на isBlocked=$isBlocked")
+    }
+
+    fun sendSupportMessage(sender: String, text: String, context: Context) {
+        if (text.isBlank()) return
+        dbHelper.insertSupportMessage(sender, text)
+        Toast.makeText(context, "Вопрос обратной связи отправлен модераторам!", Toast.LENGTH_SHORT).show()
+        AppLogger.log(context, "SUPPORT", "Пользователь $sender отправил тикет: $text")
+    }
+
+    fun replySupportMessage(id: Int, replyBy: String, replyText: String, replyRole: String, context: Context) {
+        if (replyText.isBlank()) return
+        dbHelper.replyToSupportMessage(id, replyBy, replyText, replyRole)
+        Toast.makeText(context, "Ответ на тикет #$id отправлен!", Toast.LENGTH_SHORT).show()
+        AppLogger.log(context, "SUPPORT", "Модератор $replyBy [$replyRole] ответил на тикет #$id: $replyText")
+    }
+
+    fun sendGlobalAnnouncement(sender: String, text: String, context: Context) {
+        if (text.isBlank()) return
+        dbHelper.insertAnnouncement(sender, text)
+        Toast.makeText(context, "Уведомление отправлено всем пользователям!", Toast.LENGTH_SHORT).show()
+        AppLogger.log(context, "BROADCAST", "$sender разослал уведомление: $text")
+    }
+
+    fun getPlanForRole(role: String): String {
+        return when (role) {
+            "CREATOR" -> "Главный Создатель | Михаил Попов"
+            "SENIOR_ADMIN" -> "Старшая Администрация"
+            "JUNIOR_ADMIN" -> "Младший Модератор"
+            "ROSKOMNADZOR" -> "Блокировщик РКН"
+            else -> "Покупатель"
+        }
+    }
+
+    fun getRoleLabel(role: String): String {
+        return when (role) {
+            "CREATOR" -> "Создатель (Владелец)"
+            "SENIOR_ADMIN" -> "Старший админ"
+            "JUNIOR_ADMIN" -> "Младший модератор"
+            "ROSKOMNADZOR" -> "Роскомнадзор"
+            else -> "Пользователь"
+        }
     }
 }

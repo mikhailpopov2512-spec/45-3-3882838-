@@ -69,6 +69,7 @@ fun VpnMainScreen(viewModel: VpnViewModel) {
             "settings" -> SettingsMenuView(viewModel)
             "login" -> LoginPaneView(viewModel)
             "logs" -> LiveLoggerView(viewModel)
+            "admin_support" -> AdminSupportPaneView(viewModel)
         }
     }
 }
@@ -204,6 +205,46 @@ fun DefaultDashboardView(viewModel: VpnViewModel) {
                     .padding(horizontal = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Global announcements banner (Mikhail Popov's direct system broadcasts!)
+                val announcements by viewModel.announcements.collectAsStateWithLifecycle()
+                if (announcements.isNotEmpty()) {
+                    val latestAnn = announcements.first()
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp)
+                            .shadow(2.dp, RoundedCornerShape(12.dp)),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Notifications,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Глобальное объявление от ${latestAnn.sender}:",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                )
+                                Text(
+                                    text = latestAnn.text,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Interactive Radar Conic Pulse connection globe
                 ConnectionGlobe(
                     connectionState = connectionState,
@@ -1376,6 +1417,10 @@ fun SettingsMenuView(viewModel: VpnViewModel) {
                                     AppLogger.log(context, "SETTING", "Режим БЕТА: $it")
                                 }
                                 HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                                SettingRowClickable("Центр Поддержки & Роли Администрирования", "Кабинет Создателя, блокировки Роскомнадзора, чат поддержки") {
+                                    viewModel.navigateTo("admin_support")
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f))
                                 SettingRowClickable("Проверить обновление", "Текущая версия: v2.8.5-Mera") {
                                     showUpdateDialog = true
                                 }
@@ -2265,3 +2310,637 @@ private fun formatBytes(bytes: Long): String {
         else -> String.format(Locale.ROOT, "%.1f GB", b / gb)
     }
 }
+
+// ----------------------------------------------------
+// UNIFIED CONTROL CENTER, SUPPORT MESSENGER, ROLES & ACCOUNTS
+// ----------------------------------------------------
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AdminSupportPaneView(viewModel: VpnViewModel) {
+    val context = LocalContext.current
+    val loggedInUser by viewModel.loginUserAccount.collectAsStateWithLifecycle()
+    val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
+    val supportMessages by viewModel.supportMessages.collectAsStateWithLifecycle()
+    val captchaQuestion by viewModel.captchaQuestion.collectAsStateWithLifecycle()
+    val captchaAnswer by viewModel.captchaAnswer.collectAsStateWithLifecycle()
+
+    var isRegisterTab by remember { mutableStateOf(false) }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var selectedRole by remember { mutableStateOf("USER") }
+    var captchaInput by remember { mutableStateOf("") }
+
+    // Admin Tabs: "announcements" (Mikhail Popov), "support" (Replies), "users" (Access controls)
+    var activeAdminTab by remember { mutableStateOf("support") }
+    var broadcastText by remember { mutableStateOf("") }
+    var userMsgToSend by remember { mutableStateOf("") }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Центр Управления & Ролей VIP", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                navigationIcon = {
+                    IconButton(onClick = { viewModel.navigateTo("settings") }) {
+                        Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (loggedInUser != null) {
+                        IconButton(onClick = { viewModel.adminLogout() }) {
+                            Icon(imageVector = Icons.Filled.ExitToApp, contentDescription = "Log Out")
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            if (loggedInUser == null) {
+                // ANONYMOUS PASS / AUTHENTICATION & LOGIN TAB
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                TabRow(selectedTabIndex = if (isRegisterTab) 1 else 0) {
+                                    Tab(
+                                        selected = !isRegisterTab,
+                                        onClick = { isRegisterTab = false },
+                                        text = { Text("Авторизация") }
+                                    )
+                                    Tab(
+                                        selected = isRegisterTab,
+                                        onClick = { isRegisterTab = true },
+                                        text = { Text("Создать аккаунт") }
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                OutlinedTextField(
+                                    value = username,
+                                    onValueChange = { username = it },
+                                    label = { Text("Логин / Имя") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                OutlinedTextField(
+                                    value = password,
+                                    onValueChange = { password = it },
+                                    label = { Text("Пароль") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                if (isRegisterTab) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text("Привилегия аккаунта:", fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(bottom = 6.dp))
+                                    var expandedRole by remember { mutableStateOf(false) }
+                                    Box(modifier = Modifier.fillMaxWidth()) {
+                                        OutlinedButton(
+                                            onClick = { expandedRole = true },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Роль: " + viewModel.getRoleLabel(selectedRole))
+                                        }
+                                        DropdownMenu(
+                                            expanded = expandedRole,
+                                            onDismissRequest = { expandedRole = false }
+                                        ) {
+                                            listOf("USER", "JUNIOR_ADMIN", "SENIOR_ADMIN", "CREATOR", "ROSKOMNADZOR").forEach { r ->
+                                                DropdownMenuItem(
+                                                    text = { Text(viewModel.getRoleLabel(r)) },
+                                                    onClick = {
+                                                        selectedRole = r
+                                                        expandedRole = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+                                
+                                // SIMPLE HIGH QUALITY CAPTCHA
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text("Защита от спама (Капча):", fontSize = 10.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha=0.75f))
+                                            Text(captchaQuestion, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                        }
+                                        IconButton(onClick = { viewModel.generateNewCaptcha() }) {
+                                            Icon(imageVector = Icons.Filled.Refresh, contentDescription = "Refresh Captcha", tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = captchaInput,
+                                    onValueChange = { captchaInput = it },
+                                    label = { Text("Решение примера") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(18.dp))
+
+                                Button(
+                                    onClick = {
+                                        if (captchaInput.trim() != captchaAnswer) {
+                                            Toast.makeText(context, "Решение неверное! Пройдите капчу заново.", Toast.LENGTH_SHORT).show()
+                                            viewModel.generateNewCaptcha()
+                                            return@Button
+                                        }
+
+                                        if (isRegisterTab) {
+                                            val registered = viewModel.adminRegister(username, password, selectedRole, context)
+                                            if (registered) {
+                                                isRegisterTab = false
+                                                captchaInput = ""
+                                                viewModel.generateNewCaptcha()
+                                            }
+                                        } else {
+                                            val logged = viewModel.adminLogin(username, password, context)
+                                            if (logged) {
+                                                username = ""
+                                                password = ""
+                                                captchaInput = ""
+                                                viewModel.generateNewCaptcha()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(if (isRegisterTab) "Регистрация нового профиля" else "Войти под выбранной ролью")
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(imageVector = Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                    Text("Шпаргалка стандартных ролей:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text("• Создатель: логин [Михаил Попов], пароль [creator] (Отправка писем, бан РКН)", fontSize = 12.sp)
+                                Text("• Старший админ: логин [Старший администратор], пароль [admin] (Бан-лист)", fontSize = 12.sp)
+                                Text("• Младший модер: логин [Младший администратор], пароль [moderator] (Обратная связь)", fontSize = 12.sp)
+                                Text("• Роскомнадзор (Easter egg): логин [Роскомнадзор], пароль [blockme] (Забанен по умолчанию!)", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            } else {
+                // LOGGED ACTIVE ADMINDASHBOARD / MESSENGER
+                val user = loggedInUser!!
+                val role = user.role
+
+                // Dynamic Header with Role Indicator and Quick Switching Option
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(user.username.take(2).uppercase(), color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(user.username, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text("Права: " + viewModel.getRoleLabel(role), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                // SUB-PANE SPLITS BASED ON DEFINED PRIVILEGES
+                when (role) {
+                    "CREATOR" -> {
+                        // Mikhail Popov is System Creator [CREATOR]
+                        TabRow(selectedTabIndex = when(activeAdminTab) { "support" -> 0; "announcements" -> 1; else -> 2 }) {
+                            Tab(selected = activeAdminTab == "support", onClick = { activeAdminTab = "support" }, text = { Text("Поддержка") })
+                            Tab(selected = activeAdminTab == "announcements", onClick = { activeAdminTab = "announcements" }, text = { Text("Объявить") })
+                            Tab(selected = activeAdminTab == "users", onClick = { activeAdminTab = "users" }, text = { Text("Бан-контроль") })
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (activeAdminTab == "support") {
+                                if (supportMessages.isEmpty()) {
+                                    item {
+                                        Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                                            Text("Вопросов поддержки пока не поступало.", color = Color.Gray, fontSize = 13.sp)
+                                        }
+                                    }
+                                }
+                                items(supportMessages) { ticket ->
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                                Text("Билет от: " + ticket.sender, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                Text(Date(ticket.timestamp).toString().take(16), fontSize = 11.sp, color = Color.Gray)
+                                            }
+                                            Text("Описание вопроса: " + ticket.text, fontSize = 13.sp)
+                                            if (ticket.replyText != null) {
+                                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.08f))
+                                                Text("Ответ от " + ticket.replyBy + " [" + ticket.replyRole + "]:", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                                Text(ticket.replyText, fontSize = 13.sp)
+                                            } else {
+                                                var creatorReplyText by remember { mutableStateOf("") }
+                                                OutlinedTextField(
+                                                    value = creatorReplyText,
+                                                    onValueChange = { creatorReplyText = it },
+                                                    label = { Text("Ваш прямой ответ Создателя") },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                                Button(
+                                                    onClick = {
+                                                        if (creatorReplyText.isNotBlank()) {
+                                                            viewModel.replySupportMessage(ticket.id, user.username, creatorReplyText, "Главный Админ", context)
+                                                            creatorReplyText = ""
+                                                        }
+                                                    },
+                                                    modifier = Modifier.align(Alignment.End)
+                                                ) {
+                                                    Text("Отправить")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if (activeAdminTab == "announcements") {
+                                item {
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text("Создатель Михаил Попов вещает всем пользователям:", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            OutlinedTextField(
+                                                value = broadcastText,
+                                                onValueChange = { broadcastText = it },
+                                                label = { Text("Содержимое объявления") },
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    if (broadcastText.isNotBlank()) {
+                                                        viewModel.sendGlobalAnnouncement("Создатель Михаил Попов", broadcastText, context)
+                                                        broadcastText = ""
+                                                    }
+                                                },
+                                                modifier = Modifier.align(Alignment.End)
+                                            ) {
+                                                Icon(imageVector = Icons.Filled.Send, contentDescription = null)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Запустить вещание")
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                item {
+                                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Text("⚠️ ПАСХАЛКА: Блокировка Роскомнадзора", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                                            Text(
+                                                "Роскомнадзор забанен создателем. Вы можете снять/вернуть этот бан в реальном времени.",
+                                                fontSize = 12.sp, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha=0.85f)
+                                            )
+                                            val rkn = allUsers.find { it.username == "Роскомнадзор" }
+                                            if (rkn != null) {
+                                                Button(
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = if (rkn.isBlocked) Color(0xFF2E7D32) else Color(0xFFD32F2F)
+                                                    ),
+                                                    onClick = {
+                                                        viewModel.adminSetBlock("Роскомнадзор", !rkn.isBlocked, context)
+                                                    }
+                                                ) {
+                                                    Text(if (rkn.isBlocked) "ОБНУЛИТЬ БАН РОСКОМНАДЗОРА" else "ВЫДАТЬ БАН РОСКОМНАДЗОРУ")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                items(allUsers.filter { it.username != "Михаил Попов" }) { dbUser ->
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text(dbUser.username, fontWeight = FontWeight.Bold)
+                                                Text("Ранг: " + viewModel.getRoleLabel(dbUser.role), fontSize = 12.sp, color = Color.Gray)
+                                                Text(
+                                                    text = if (dbUser.isBlocked) "ЗАБАНЕН" else "АКТИВЕН",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = if (dbUser.isBlocked) Color.Red else Color.Green
+                                                )
+                                            }
+                                            Switch(
+                                                checked = dbUser.isBlocked,
+                                                onCheckedChange = { viewModel.adminSetBlock(dbUser.username, it, context) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "SENIOR_ADMIN" -> {
+                        // Senior Admin Moderates other lower users and pings support replies
+                        TabRow(selectedTabIndex = if (activeAdminTab == "support") 0 else 1) {
+                            Tab(selected = activeAdminTab == "support", onClick = { activeAdminTab = "support" }, text = { Text("Сообщения") })
+                            Tab(selected = activeAdminTab == "users", onClick = { activeAdminTab = "users" }, text = { Text("Бан-контроль") })
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (activeAdminTab == "support") {
+                                if (supportMessages.isEmpty()) {
+                                    item {
+                                        Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                                            Text("Запросов обратной связи нет.", color = Color.Gray, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                                items(supportMessages) { ticket ->
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text("От пользователя: " + ticket.sender, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text("Суть: " + ticket.text, fontSize = 13.sp)
+                                            if (ticket.replyText != null) {
+                                                Text("Ответ [${ticket.replyRole}]: ${ticket.replyText}", color = Color.Gray, fontSize = 12.sp)
+                                            } else {
+                                                var seniorReplyText by remember { mutableStateOf("") }
+                                                OutlinedTextField(
+                                                    value = seniorReplyText,
+                                                    onValueChange = { seniorReplyText = it },
+                                                    label = { Text("Ответ Старшего Модератора") },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                                Button(
+                                                    onClick = {
+                                                        if (seniorReplyText.isNotBlank()) {
+                                                            viewModel.replySupportMessage(ticket.id, user.username, seniorReplyText, "Старший админ", context)
+                                                            seniorReplyText = ""
+                                                        }
+                                                    },
+                                                    modifier = Modifier.align(Alignment.End)
+                                                ) {
+                                                    Text("Ответить")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                items(allUsers.filter { it.role != "CREATOR" }) { dbUser ->
+                                    Card(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text(dbUser.username, fontWeight = FontWeight.Bold)
+                                                Text("Ранг: " + viewModel.getRoleLabel(dbUser.role), fontSize = 12.sp, color = Color.Gray)
+                                                Text(
+                                                    text = if (dbUser.isBlocked) "БАН" else "АКТИВЕН",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = if (dbUser.isBlocked) Color.Red else Color.Green
+                                                )
+                                            }
+                                            Switch(
+                                                checked = dbUser.isBlocked,
+                                                onCheckedChange = { viewModel.adminSetBlock(dbUser.username, it, context) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "JUNIOR_ADMIN" -> {
+                        // Junior Moderator Answers Support Requests, label [Младший модератор]
+                        Text("Библиотека обращений пользователей программы:", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            if (supportMessages.isEmpty()) {
+                                item {
+                                    Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                                        Text("История сообщений поддержки пуста.", color = Color.Gray)
+                                    }
+                                }
+                            }
+                            items(supportMessages) { ticket ->
+                                Card(modifier = Modifier.fillMaxWidth()) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text("Автор: " + ticket.sender, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("Текст: " + ticket.text, fontSize = 13.sp)
+                                        if (ticket.replyText != null) {
+                                            Text("Ответ [${ticket.replyRole}]: ${ticket.replyText}", fontSize = 12.sp, color = Color.Gray)
+                                        } else {
+                                            var replyInput by remember { mutableStateOf("") }
+                                            OutlinedTextField(
+                                                value = replyInput,
+                                                onValueChange = { replyInput = it },
+                                                label = { Text("Напишите ответ [Младший модератор]") },
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    if (replyInput.isNotBlank()) {
+                                                        viewModel.replySupportMessage(ticket.id, user.username, replyInput, "Младший модер", context)
+                                                        replyInput = ""
+                                                    }
+                                                },
+                                                modifier = Modifier.align(Alignment.End)
+                                            ) {
+                                                Text("Отправить")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "ROSKOMNADZOR" -> {
+                        // Easter Egg Roskomnadzor panel
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            item {
+                                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("⚔️ РЕЖИМ КОМИТЕТА: Роскомнадзор", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onErrorContainer)
+                                        Text(
+                                            "Вы вошли в пасхальный аккаунт 'Роскомнадзор'. Все параметры мониторинга сети под строгим наблюдением. У вас нет прав блокирования других администраторов.",
+                                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha=0.85f)
+                                        )
+                                    }
+                                }
+                            }
+                            item {
+                                Card {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text("Автоматическая проверка безопасности:", fontWeight = FontWeight.Bold)
+                                        Text("• Доступность ядра Xray: Стабильно", fontSize = 13.sp)
+                                        Text("• Фрагментация трафика: Активна (Обход замедлений)", fontSize = 13.sp)
+                                        Text("• Шифрование протокола VLESS: Норма", fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        // STANDARD USER CHAT SUPPORT
+                        Text("Служба поддержки пользователей MeraVPN 24/7. Напишите ваш вопрос, мы ответим в течение нескольких минут!", modifier = Modifier.padding(horizontal=16.dp), fontSize=12.sp)
+                        
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Создать обращение:", fontWeight = FontWeight.Bold)
+                                OutlinedTextField(
+                                    value = userMsgToSend,
+                                    onValueChange = { userMsgToSend = it },
+                                    label = { Text("Содержимое вопроса или жалобы") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Button(
+                                    onClick = {
+                                        if (userMsgToSend.isNotBlank()) {
+                                            viewModel.sendSupportMessage(user.username, userMsgToSend, context)
+                                            userMsgToSend = ""
+                                        }
+                                    },
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Icon(imageVector = Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Отправить в поддержку")
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Конфиденциальный чат с тикетами:", fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
+
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            val myTickets = supportMessages.filter { it.sender == user.username }
+                            if (myTickets.isEmpty()) {
+                                item {
+                                    Box(modifier = Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
+                                        Text("Вы еще не создавали обращений. Поддержка ожидает вопросов!", color = Color.Gray, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                            items(myTickets) { ticket ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Мой вопрос в поддержку:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                                            Text(Date(ticket.timestamp).toString().take(16), fontSize = 10.sp, color = Color.Gray)
+                                        }
+                                        Text(ticket.text, fontSize = 13.sp)
+                                        if (ticket.replyText != null) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha=0.06f))
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Ответил " + ticket.replyBy + " [" + ticket.replyRole + "]:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF2E7D32))
+                                            Text(ticket.replyText, fontSize = 13.sp)
+                                        } else {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Ваше обращение рассматривается администраторами...", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
