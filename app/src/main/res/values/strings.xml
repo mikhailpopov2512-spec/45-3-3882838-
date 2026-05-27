@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Happ VPN</string>
+    <string name="vpn_connected">Подключено</string>
+    <string name="vpn_disconnected">Отключено</string>
+    <string name="vpn_connecting">Подключение…</string>
+    <string name="import_success">Успешно импортировано</string>
+    <string name="import_failed">Ошибка импорта! Нет подходящих ссылок или ключей.</string>
+    <string name="add_profile">Добавить профиль</string>
+    <string name="clipboard_empty">Буфер обмена пуст</string>
+    <string name="delete_all">Удалить нерабочие</string>
+    <string name="sort_ping">По пингу</string>
+    <string name="sort_name">По имени</string>
+    <string name="sort_date">По дате</string>
+</resources>
