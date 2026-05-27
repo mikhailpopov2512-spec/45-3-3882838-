@@ -40,6 +40,8 @@ object VpnLinkParser {
             trimmed.startsWith("vmess://", ignoreCase = true) -> parseVmess(trimmed)
             trimmed.startsWith("ss://", ignoreCase = true) -> parseShadowsocks(trimmed)
             trimmed.startsWith("trojan://", ignoreCase = true) -> parseTrojan(trimmed)
+            trimmed.startsWith("hysteria2://", ignoreCase = true) || trimmed.startsWith("hy2://", ignoreCase = true) -> parseHysteria2(trimmed)
+            trimmed.startsWith("tuic://", ignoreCase = true) -> parseTuic(trimmed)
             else -> null
         }
     }
