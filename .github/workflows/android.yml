@@ -28,11 +28,9 @@ jobs:
 
       - name: Build Android App with Gradle
         run: |
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug
-          else
-            gradle assembleDebug
-          fi
+          # Robust check and regeneration of the gradle wrapper to heal any binary corruption from git checkout
+          gradle wrapper --gradle-version 9.3.1
+          ./gradlew assembleDebug
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
