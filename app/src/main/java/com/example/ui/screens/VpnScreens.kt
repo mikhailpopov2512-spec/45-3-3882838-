@@ -33,13 +33,15 @@ import com.example.data.local.SubscriptionEntity
 import com.example.data.local.VpnProfileEntity
 import com.example.ui.viewmodel.VpnViewModel
 
-// Theme Palette (Premium Tech Dark Theme)
-val DarkBackground = Color(0xFF121214)
-val SurfaceCard = Color(0xFF1E1E24)
-val GlowGreen = Color(0xFF00E676)
-val ElectricBlue = Color(0xFF00B0FF)
-val BrightText = Color(0xFFFFFFFF)
-val MutedText = Color(0xFFA0A0A5)
+// Theme Palette (Vibrant Dynamic Themes)
+var isDarkThemeState by mutableStateOf(false)
+
+val DarkBackground: Color get() = if (isDarkThemeState) Color(0xFF121214) else Color(0xFFF5F7FA)
+val SurfaceCard: Color get() = if (isDarkThemeState) Color(0xFF1E1E24) else Color(0xFFFFFFFF)
+val GlowGreen: Color get() = if (isDarkThemeState) Color(0xFF00E676) else Color(0xFF10B981)
+val ElectricBlue: Color get() = if (isDarkThemeState) Color(0xFF00B0FF) else Color(0xFF007BFF)
+val BrightText: Color get() = if (isDarkThemeState) Color(0xFFFFFFFF) else Color(0xFF1A1A1E)
+val MutedText: Color get() = if (isDarkThemeState) Color(0xFFA0A0A5) else Color(0xFF6B7280)
 
 @Composable
 fun VpnMainScreen(
@@ -48,7 +50,13 @@ fun VpnMainScreen(
     onRequestPrepareVpn: () -> Unit
 ) {
     val context = LocalContext.current
-    var activeTab by remember { mutableStateOf(0) } // 0: Dashboard, 1: Server List, 2: Subscriptions, 3: Backups
+    val sharedPrefs = remember { context.getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE) }
+    remember {
+        isDarkThemeState = sharedPrefs.getBoolean("is_dark_theme", false)
+        true
+    }
+    
+    var activeTab by remember { mutableStateOf(0) } // 0: Dashboard, 1: Server List, 2: Subscriptions, 3: Settings
     
     val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
     val isConnecting by viewModel.isConnecting.collectAsStateWithLifecycle()
@@ -100,8 +108,8 @@ fun VpnMainScreen(
                 NavigationBarItem(
                     selected = activeTab == 3,
                     onClick = { activeTab = 3 },
-                    icon = { Icon(Icons.Filled.Backup, contentDescription = "Backups") },
-                    label = { Text("Бэкап", fontSize = 11.sp) },
+                    icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
+                    label = { Text("Настройки", fontSize = 11.sp) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = ElectricBlue,
                         selectedTextColor = ElectricBlue,
@@ -120,7 +128,7 @@ fun VpnMainScreen(
                 0 -> DashboardTab(viewModel, context, onRequestPrepareVpn)
                 1 -> ServersTab(viewModel)
                 2 -> SubscriptionsTab(viewModel)
-                3 -> BackupsTab(viewModel)
+                3 -> SettingsTab(viewModel)
             }
         }
     }
@@ -907,7 +915,16 @@ fun SubscriptionCardItem(
 }
 
 @Composable
-fun BackupsTab(viewModel: VpnViewModel) {
+fun SettingsTab(viewModel: VpnViewModel) {
+    val context = LocalContext.current
+    val sharedPrefs = remember { context.getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE) }
+    
+    // Persistent values
+    var isDark by remember { mutableStateOf(sharedPrefs.getBoolean("is_dark_theme", false)) }
+    var dnsServer by remember { mutableStateOf(sharedPrefs.getString("dns_server", "1.1.1.1") ?: "1.1.1.1") }
+    var mtuSize by remember { mutableStateOf(sharedPrefs.getInt("mtu_size", 1400)) }
+    
+    // For Backup actions
     var rawSerializedBackup by remember { mutableStateOf("") }
     var pasteBackupInput by remember { mutableStateOf("") }
     var importStatusMsg by remember { mutableStateOf("") }
@@ -919,10 +936,10 @@ fun BackupsTab(viewModel: VpnViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
-            Text("Резервное копирование (Backup)", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BrightText)
+            Text("Настройки", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BrightText)
         }
 
-        // EXPORT PANEL
+        // DESIGN SYSTEM & THEME
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -933,8 +950,132 @@ fun BackupsTab(viewModel: VpnViewModel) {
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Экспортировать бэкап", color = BrightText, fontWeight = FontWeight.Bold)
-                    Text("Скопируйте сгенерированный JSON текст, чтобы сохранить конфигурации и серверы.", color = MutedText, fontSize = 12.sp)
+                    Text("Внешний вид", color = BrightText, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Темная тема оформления", color = BrightText, fontSize = 14.sp)
+                            Text("Переключить режим приложения", color = MutedText, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = isDark,
+                            onCheckedChange = { checked ->
+                                isDark = checked
+                                isDarkThemeState = checked
+                                sharedPrefs.edit().putBoolean("is_dark_theme", checked).apply()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = ElectricBlue
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // CONNECTION TUNNEL SETTINGS
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Параметры соединения", color = BrightText, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+
+                    // DNS Server Option
+                    Column {
+                        Text("DNS Сервер", color = BrightText, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val dnsOptions = listOf("1.1.1.1", "8.8.8.8", "Система")
+                            dnsOptions.forEach { option ->
+                                val selected = when (option) {
+                                    "Система" -> dnsServer == "system"
+                                    else -> dnsServer == option
+                                }
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (selected) ElectricBlue else SurfaceCard.copy(alpha = 0.5f)
+                                        )
+                                        .clickable {
+                                            val value = if (option == "Система") "system" else option
+                                            dnsServer = value
+                                            sharedPrefs.edit().putString("dns_server", value).apply()
+                                        }
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (selected) Color.Transparent else MutedText.copy(alpha = 0.3f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(vertical = 10.dp)
+                                ) {
+                                    Text(
+                                        text = option,
+                                        color = if (selected) Color.White else BrightText,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // MTU Configuration
+                    Column {
+                        Text("Размер MTU (MTU Size)", color = BrightText, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedTextField(
+                            value = mtuSize.toString(),
+                            onValueChange = { newVal ->
+                                val intVal = newVal.toIntOrNull() ?: 1400
+                                mtuSize = intVal
+                                sharedPrefs.edit().putInt("mtu_size", intVal).apply()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = BrightText,
+                                unfocusedTextColor = BrightText,
+                                focusedBorderColor = ElectricBlue,
+                                unfocusedBorderColor = MutedText
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // BACKUPS INTEGRATION IN SETTINGS
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("Резервное копирование (Бэкап)", color = BrightText, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Экспортируйте или импортируйте резервной YAML/JSON код настроек.", color = MutedText, fontSize = 11.sp)
 
                     if (rawSerializedBackup.isNotBlank()) {
                         OutlinedTextField(
@@ -959,41 +1100,24 @@ fun BackupsTab(viewModel: VpnViewModel) {
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("export_backup_button")
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = if (rawSerializedBackup.isBlank()) "Сгенерировать Код Бэкапа" else "Обновить Код Бэкапа",
-                            color = BrightText,
+                            text = if (rawSerializedBackup.isBlank()) "Создать бэкап" else "Обновить бэкап",
+                            color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                }
-            }
-        }
 
-        // IMPORT PANEL
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Импортировать бэкап", color = BrightText, fontWeight = FontWeight.Bold)
-                    Text("Вставьте ранее скопированный JSON код бэкапа и нажмите импорт.", color = MutedText, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(MutedText.copy(alpha = 0.2f)))
 
                     OutlinedTextField(
                         value = pasteBackupInput,
                         onValueChange = { pasteBackupInput = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(130.dp),
-                        placeholder = { Text("Вставьте JSON бэкап код...", color = MutedText) },
+                            .height(110.dp),
+                        placeholder = { Text("Вставьте JSON код бэкапа...", color = MutedText) },
                         textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = BrightText),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = ElectricBlue,
@@ -1014,20 +1138,18 @@ fun BackupsTab(viewModel: VpnViewModel) {
                             if (pasteBackupInput.isNotBlank()) {
                                 viewModel.importBackupData(pasteBackupInput) { success ->
                                     if (success) {
-                                        importStatusMsg = "Бэкап успешно восстановлен! Серверы обновлены."
+                                        importStatusMsg = "Конфигурация успешно восстановлена!"
                                         pasteBackupInput = ""
                                     } else {
-                                        importStatusMsg = "Неверный формат бэкапа. Проверьте ваш JSON."
+                                        importStatusMsg = "Ошибка импорта. Проверьте ваш JSON."
                                     }
                                 }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = GlowGreen),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("import_backup_button")
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Импорт Конфигурации", color = DarkBackground, fontWeight = FontWeight.Bold)
+                        Text("Импортировать бэкап", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
