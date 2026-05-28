@@ -60,17 +60,21 @@ class VpnViewModel(private val repository: VpnRepository) : ViewModel() {
         }
     }
 
-    fun testProfilePing(profile: VpnProfileEntity) {
+    fun testProfilePing(context: Context, profile: VpnProfileEntity) {
         viewModelScope.launch {
-            repository.testPing(profile)
+            val prefs = context.getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE)
+            val realPingOnly = prefs.getBoolean("real_ping_only", true)
+            repository.testPing(profile, realPingOnly)
         }
     }
 
-    fun testAllPings() {
+    fun testAllPings(context: Context) {
         viewModelScope.launch {
+            val prefs = context.getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE)
+            val realPingOnly = prefs.getBoolean("real_ping_only", true)
             val list = repository.profiles.stateIn(viewModelScope).value
             list.forEach {
-                repository.testPing(it)
+                repository.testPing(it, realPingOnly)
             }
         }
     }

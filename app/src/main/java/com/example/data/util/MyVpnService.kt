@@ -60,14 +60,18 @@ class MyVpnService : VpnService() {
     }
 
     private fun connectVpn(serverIp: String, serverPort: Int, profileName: String, protocol: String, configPayload: String) {
-        disconnectVpn()
+        cleanupActiveConnection()
         
         VpnStateHolder.isConnecting.value = true
         VpnStateHolder.isConnected.value = false
         
         createNotificationChannel()
         val notification = createNotification("Подключение к $profileName...")
-        startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
 
         vpnJob = serviceScope.launch {
             try {
@@ -433,7 +437,7 @@ class MyVpnService : VpnService() {
         }
     }
 
-    private fun disconnectVpn() {
+    private fun cleanupActiveConnection() {
         vpnJob?.cancel()
         vpnJob = null
         proxyJob?.cancel()
@@ -458,7 +462,10 @@ class MyVpnService : VpnService() {
         VpnStateHolder.bytesReceived.value = 0
         VpnStateHolder.bytesTransmitted.value = 0
         VpnStateHolder.currentDurationSec.value = 0
-        
+    }
+
+    private fun disconnectVpn() {
+        cleanupActiveConnection()
         stopForeground(true)
         stopSelf()
     }

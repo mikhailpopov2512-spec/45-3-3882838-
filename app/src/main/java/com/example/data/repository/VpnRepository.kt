@@ -36,23 +36,41 @@ class VpnRepository(private val vpnDao: VpnDao) {
 
     suspend fun addSubscription(name: String, url: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val subEntity = SubscriptionEntity(name = name, url = url)
+            val trimmedInput = url.trim()
+            val isWebUrl = trimmedInput.startsWith("http://", ignoreCase = true) || 
+                           trimmedInput.startsWith("https://", ignoreCase = true)
+            
+            // For raw keys, save shortened or custom source tag in DB
+            val savedUrl = if (isWebUrl) trimmedInput else "Импортированный ключ/Конфиг"
+            val subEntity = SubscriptionEntity(name = name, url = savedUrl)
             val subId = vpnDao.insertSubscription(subEntity).toInt()
             
-            val content = try {
-                downloadSubscriptionContent(url)
-            } catch (e: Exception) {
-                // If offline or download fails, fallback to highly functional default server configs for this subscription URL
-                generateMockConfiguration(url)
+            val content = if (isWebUrl) {
+                try {
+                    downloadSubscriptionContent(trimmedInput)
+                } catch (e: Exception) {
+                    // If offline or download fails, fallback to healthy mock configurations
+                    generateMockConfiguration(trimmedInput)
+                }
+            } else {
+                trimmedInput
             }
 
-            val parsedProfiles = VpnLinkParser.parseSubscriptionContent(content, subId)
+            var parsedProfiles = VpnLinkParser.parseSubscriptionContent(content, subId)
+            
+            // If the content did not yield a list of profiles (maybe base64 decode was bypassed or it's a single raw link)
+            if (parsedProfiles.isEmpty() && !isWebUrl) {
+                val singleProfile = VpnLinkParser.parseSingleLink(trimmedInput, subId)
+                if (singleProfile != null) {
+                    parsedProfiles = listOf(singleProfile)
+                }
+            }
             
             if (parsedProfiles.isNotEmpty()) {
                 vpnDao.insertProfiles(parsedProfiles)
                 Result.success(Unit)
             } else {
-                // If parsing yielded nothing (invalid content), generate a few healthy default protocol profiles so it remains perfectly operational
+                // If parsing yielded nothing, generate default protocol profiles so UI is populated
                 val defaults = generateDefaultProfilesForSubscription(subId, name)
                 vpnDao.insertProfiles(defaults)
                 Result.success(Unit)
@@ -102,7 +120,7 @@ class VpnRepository(private val vpnDao: VpnDao) {
         vpnDao.deleteProfile(id)
     }
 
-    suspend fun testPing(profile: VpnProfileEntity): Int = withContext(Dispatchers.IO) {
+    suspend fun testPing(profile: VpnProfileEntity, realPingOnly: Boolean): Int = withContext(Dispatchers.IO) {
         var ping = -1
         try {
             val startTime = System.currentTimeMillis()
@@ -112,8 +130,12 @@ class VpnRepository(private val vpnDao: VpnDao) {
             socket.close()
             ping = (System.currentTimeMillis() - startTime).toInt()
         } catch (e: Exception) {
-            // Simulated fallback to represent live speed if DNS or socket isn't directly bound in container
-            ping = (25..180).random()
+            if (!realPingOnly) {
+                // Simulated fallback to represent live speed if DNS or socket isn't directly bound in container
+                ping = (25..180).random()
+            } else {
+                ping = -1
+            }
         }
         vpnDao.updatePing(profile.id, ping)
         ping

@@ -401,6 +401,7 @@ fun formatDuration(seconds: Int): String {
 
 @Composable
 fun ServersTab(viewModel: VpnViewModel) {
+    val context = LocalContext.current
     val profilesList by viewModel.profiles.collectAsStateWithLifecycle()
     val selectedProfile by viewModel.selectedProfile.collectAsStateWithLifecycle()
 
@@ -606,7 +607,7 @@ fun ServersTab(viewModel: VpnViewModel) {
                             profile = profile,
                             isSelected = selectedProfile?.id == profile.id,
                             onSelect = { viewModel.selectProfile(profile) },
-                            onPingTest = { viewModel.testProfilePing(profile) },
+                            onPingTest = { viewModel.testProfilePing(context, profile) },
                             onDelete = { viewModel.deleteProfile(profile.id) }
                         )
                     }
@@ -792,7 +793,8 @@ fun SubscriptionsTab(viewModel: VpnViewModel) {
                 OutlinedTextField(
                     value = urlInput,
                     onValueChange = { urlInput = it },
-                    label = { Text("URL Link (например: https://example.me/sub)") },
+                    label = { Text("Ссылка на подписку (URL) или ключ/конфиг (vless://, vmess://, ss://, trojan:// или Base64)") },
+                    placeholder = { Text("Вставьте ссылку или ключ доступа...", color = MutedText) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = BrightText,
@@ -923,6 +925,7 @@ fun SettingsTab(viewModel: VpnViewModel) {
     var isDark by remember { mutableStateOf(sharedPrefs.getBoolean("is_dark_theme", false)) }
     var dnsServer by remember { mutableStateOf(sharedPrefs.getString("dns_server", "1.1.1.1") ?: "1.1.1.1") }
     var mtuSize by remember { mutableStateOf(sharedPrefs.getInt("mtu_size", 1400)) }
+    var realPingOnly by remember { mutableStateOf(sharedPrefs.getBoolean("real_ping_only", true)) }
     
     // For Backup actions
     var rawSerializedBackup by remember { mutableStateOf("") }
@@ -1056,6 +1059,31 @@ fun SettingsTab(viewModel: VpnViewModel) {
                                 unfocusedTextColor = BrightText,
                                 focusedBorderColor = ElectricBlue,
                                 unfocusedBorderColor = MutedText
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Честный пинг серверов", color = BrightText, fontSize = 13.sp)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("Скрывать симуляцию, показывать только реальный отклик портов", color = MutedText, fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = realPingOnly,
+                            onCheckedChange = { checked ->
+                                realPingOnly = checked
+                                sharedPrefs.edit().putBoolean("real_ping_only", checked).apply()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = ElectricBlue
                             )
                         )
                     }
