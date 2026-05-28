@@ -31,10 +31,14 @@ class VpnDao(private val dbHelper: AppDbHelper) {
 
     fun refreshAll() {
         scope.launch {
-            _subscriptions.value = getAllSubscriptionsSync()
-            val allProfs = getAllProfilesSync()
-            _profiles.value = allProfs
-            _selectedProfile.value = allProfs.firstOrNull { it.isSelected }
+            try {
+                _subscriptions.value = getAllSubscriptionsSync()
+                val allProfs = getAllProfilesSync()
+                _profiles.value = allProfs
+                _selectedProfile.value = allProfs.firstOrNull { it.isSelected }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 

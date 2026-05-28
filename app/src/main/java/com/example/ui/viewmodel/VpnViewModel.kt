@@ -2,6 +2,7 @@ package com.example.ui.viewmodel
 
 import android.content.Context
 import android.content.Intent
+import android.net.VpnService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -91,9 +92,12 @@ class VpnViewModel(private val repository: VpnRepository) : ViewModel() {
             // Check if profile selected
             val active = selectedProfile.value
             if (active != null) {
-                // Ensure preparation has occurred (standard Android prepare result checklist)
-                prepareIntentNeeded()
-                startVpnService(context, active)
+                val prepareIntent = VpnService.prepare(context)
+                if (prepareIntent != null) {
+                    prepareIntentNeeded()
+                } else {
+                    startVpnService(context, active)
+                }
             }
         }
     }
@@ -104,6 +108,8 @@ class VpnViewModel(private val repository: VpnRepository) : ViewModel() {
             putExtra("server", profile.server)
             putExtra("port", profile.port)
             putExtra("name", profile.name)
+            putExtra("protocol", profile.protocol)
+            putExtra("configPayload", profile.configPayload)
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             context.startForegroundService(intent)

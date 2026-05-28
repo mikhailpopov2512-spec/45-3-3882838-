@@ -12,7 +12,9 @@ import androidx.activity.viewModels
 import com.example.data.local.AppDatabase
 import com.example.data.repository.VpnRepository
 import com.example.ui.screens.VpnMainScreen
+import com.example.ui.screens.isDarkThemeState
 import com.example.ui.viewmodel.VpnViewModel
+import android.content.Context
 
 class MainActivity : ComponentActivity() {
 
@@ -40,6 +42,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Load persistent theme state before compose initialization
+        val sharedPrefs = getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE)
+        isDarkThemeState = sharedPrefs.getBoolean("is_dark_theme", false)
+        
         enableEdgeToEdge()
         
         setContent {
