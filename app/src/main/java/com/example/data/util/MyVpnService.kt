@@ -51,11 +51,19 @@ class MyVpnService : VpnService() {
 
         vpnJob = serviceScope.launch {
             try {
+                val sharedPrefs = getSharedPreferences("vpn_prefs", MODE_PRIVATE)
+                val dnsServer = sharedPrefs.getString("dns_server", "1.1.1.1") ?: "1.1.1.1"
+                val mtuSize = sharedPrefs.getInt("mtu_size", 1400)
+
                 val builder = Builder()
                     .addAddress("10.0.0.2", 24)
                     .addRoute("0.0.0.0", 0)
-                    .addDnsServer("8.8.8.8")
+                    .setMtu(mtuSize)
                     .setSession(profileName)
+
+                if (dnsServer != "system") {
+                    builder.addDnsServer(dnsServer)
+                }
 
                 vpnInterface = builder.establish()
 
