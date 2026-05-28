@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Happ VPN</string>
+    <string name="vpn_connected">Подключено</string>
+    <string name="vpn_disconnected">Отключено</string>
+    <string name="vpn_connecting">Подключение...</string>
+    <string name="add_subscription">Добавить подписку</string>
+    <string name="subscription_list">Мои подписки</string>
+    <string name="server_list">Список серверов</string>
+    <string name="import_config">Импорт конфигурации</string>
+    <string name="export_config">Экспорт конфигурации</string>
+    <string name="connect">Подключить</string>
+    <string name="disconnect">Отключить</string>
+    <string name="enter_name">Введите название</string>
+    <string name="enter_url">Введите URL подписки</string>
+</resources>

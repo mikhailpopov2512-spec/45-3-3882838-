@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.google.com/apk/res/android">
+    <uses-permission xmlns:android="http://schemas.google.com/apk/res/android" android:name="android.permission.INTERNET" />
+    <application xmlns:android="http://schemas.google.com/apk/res/android" android:allowBackup="true" />
+</manifest>
