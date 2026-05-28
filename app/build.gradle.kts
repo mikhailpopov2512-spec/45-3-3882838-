@@ -7,7 +7,6 @@ plugins {
 android {
     namespace = "com.example"
     compileSdk = 34
-    layout.buildDirectory.set(file("build_new"))
 
     defaultConfig {
         applicationId = "com.example.happvpn"

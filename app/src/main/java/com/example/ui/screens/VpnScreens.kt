@@ -823,8 +823,10 @@ fun SubscriptionsTab(viewModel: VpnViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("import_sub_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                    disabledContainerColor = SurfaceCard.copy(alpha = 0.5f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ElectricBlue,
+                        disabledContainerColor = SurfaceCard.copy(alpha = 0.5f)
+                    ),
                     enabled = !isLoading
                 ) {
                     Text("Импортировать", color = BrightText, fontWeight = FontWeight.Bold)
