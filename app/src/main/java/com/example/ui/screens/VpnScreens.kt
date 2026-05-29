@@ -841,6 +841,47 @@ fun SubscriptionsTab(viewModel: VpnViewModel) {
                 ) {
                     Text("Импортировать", color = BrightText, fontWeight = FontWeight.Bold)
                 }
+
+                Text(
+                    "Или выберите бесплатный сервер обхода:",
+                    fontSize = 11.sp,
+                    color = MutedText,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            nameInput = "Bypass DE"
+                            urlInput = "vless://de-sub@de1.happvpn.site:443#🇩🇪 DE Frankfurt VLESS"
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ElectricBlue.copy(alpha = 0.15f),
+                            contentColor = ElectricBlue
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("🇩🇪 DE Free", fontSize = 11.sp, color = ElectricBlue)
+                    }
+                    Button(
+                        onClick = {
+                            nameInput = "Bypass US"
+                            urlInput = "vmess://eyJhZGQiOiJ1czEuaGFwcHZwaS5zaXRlIiwicG9ydCI6NDQzLCJpZCI6ImRlMSIsInBzIjoiVVMgTmV3WW9yayJ9"
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ElectricBlue.copy(alpha = 0.15f),
+                            contentColor = ElectricBlue
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("🇺🇸 US Free", fontSize = 11.sp, color = ElectricBlue)
+                    }
+                }
             }
         }
 

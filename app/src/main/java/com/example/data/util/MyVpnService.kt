@@ -153,6 +153,178 @@ class MyVpnService : VpnService() {
         }
     }
 
+    private suspend fun connectToProxyRemote(
+        targetHost: String,
+        targetPort: Int,
+        vpnServerIp: String,
+        vpnServerPort: Int,
+        protocol: String,
+        configPayload: String
+    ): Socket = withContext(Dispatchers.IO) {
+        val isTlsRequired = protocol.equals("VLESS", true) || protocol.equals("TROJAN", true)
+        val rawSock = Socket()
+        rawSock.connect(InetSocketAddress(vpnServerIp, vpnServerPort), 3000)
+        
+        val remoteSocket = if (isTlsRequired) {
+            val factory = getTrustAllSSLSocketFactory()
+            factory.createSocket(rawSock, vpnServerIp, vpnServerPort, true) as SSLSocket
+        } else {
+            rawSock
+        }
+        
+        remoteSocket.soTimeout = 10000
+        val remoteOutput = remoteSocket.getOutputStream()
+        
+        when (protocol.uppercase()) {
+            "VLESS" -> {
+                val uuidString = extractUuidFromVless(configPayload)
+                val bos = ByteArrayOutputStream()
+                bos.write(0x00) // version
+                bos.write(uuidToBytes(uuidString)) // 16 bytes UUID
+                bos.write(0x00) // addon length
+                bos.write(0x01) // TCP command
+                
+                bos.write((targetPort shr 8) and 0xff)
+                bos.write(targetPort and 0xff)
+                
+                writeAddressAndPortToStream(bos, targetHost)
+                
+                remoteOutput.write(bos.toByteArray())
+                remoteOutput.flush()
+            }
+            "TROJAN" -> {
+                val password = extractPasswordFromTrojan(configPayload)
+                val passHash = sha224(password)
+                val bos = ByteArrayOutputStream()
+                bos.write(passHash.toByteArray(Charsets.US_ASCII))
+                bos.write(0x0d) // CR
+                bos.write(0x0a) // LF
+                bos.write(0x01) // TCP command
+                
+                writeAddressAndPortToStream(bos, targetHost)
+                
+                bos.write((targetPort shr 8) and 0xff)
+                bos.write(targetPort and 0xff)
+                
+                bos.write(0x0d) // CR
+                bos.write(0x0a) // LF
+                
+                remoteOutput.write(bos.toByteArray())
+                remoteOutput.flush()
+            }
+        }
+        remoteSocket
+    }
+
+    private fun safeResolve(host: String): String {
+        if (host.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+"))) {
+            return host
+        }
+        val dnsServers = listOf("1.1.1.1", "8.8.8.8", "77.88.8.8", "9.9.9.9")
+        for (dns in dnsServers) {
+            try {
+                val ip = resolveDnsUdp(host, dns)
+                if (ip != null) {
+                    Log.d("MyVpnService", "Safe DNS Resolved $host -> $ip via $dns")
+                    return ip
+                }
+            } catch (e: Exception) {
+                Log.w("MyVpnService", "Failed to resolve DNS via $dns: ${e.message}")
+            }
+        }
+        return try {
+            java.net.InetAddress.getByName(host).hostAddress ?: host
+        } catch (e: Exception) {
+            host
+        }
+    }
+
+    private fun resolveDnsUdp(host: String, dnsServer: String): String? {
+        var socket: java.net.DatagramSocket? = null
+        try {
+            socket = java.net.DatagramSocket().apply { soTimeout = 1500 }
+            val dnsAddress = java.net.InetAddress.getByName(dnsServer)
+            val baos = ByteArrayOutputStream()
+            baos.write(0x12)
+            baos.write(0x34)
+            baos.write(0x01)
+            baos.write(0x00)
+            baos.write(0x00)
+            baos.write(0x01)
+            baos.write(0x00)
+            baos.write(0x00)
+            baos.write(0x00)
+            baos.write(0x00)
+            baos.write(0x00)
+            baos.write(0x00)
+            
+            val parts = host.split(".")
+            for (part in parts) {
+                val bytes = part.toByteArray(Charsets.US_ASCII)
+                baos.write(bytes.size)
+                baos.write(bytes)
+            }
+            baos.write(0x00)
+            baos.write(0x00)
+            baos.write(0x01)
+            baos.write(0x00)
+            baos.write(0x01)
+            
+            val queryData = baos.toByteArray()
+            val queryPacket = java.net.DatagramPacket(queryData, queryData.size, dnsAddress, 53)
+            socket.send(queryPacket)
+            
+            val receiveBuffer = ByteArray(512)
+            val receivePacket = java.net.DatagramPacket(receiveBuffer, receiveBuffer.size)
+            socket.receive(receivePacket)
+            
+            var index = 12
+            while (index < receivePacket.length) {
+                val len = receiveBuffer[index].toInt() and 0xFF
+                if (len == 0) {
+                    index++
+                    break
+                }
+                if (len >= 192) {
+                    index += 2
+                    break
+                }
+                index += len + 1
+            }
+            index += 4
+            
+            while (index < receivePacket.length - 10) {
+                val firstByte = receiveBuffer[index].toInt() and 0xFF
+                if (firstByte >= 192) {
+                    index += 2
+                } else {
+                    while (index < receivePacket.length) {
+                        val len = receiveBuffer[index].toInt() and 0xFF
+                        if (len == 0) { index++; break }
+                        if (len >= 192) { index += 2; break }
+                        index += len + 1
+                    }
+                }
+                val type = ((receiveBuffer[index].toInt() and 0xFF) shl 8) or (receiveBuffer[index + 1].toInt() and 0xFF)
+                index += 2
+                index += 2
+                index += 4
+                val rdLength = ((receiveBuffer[index].toInt() and 0xFF) shl 8) or (receiveBuffer[index + 1].toInt() and 0xFF)
+                index += 2
+                
+                if (type == 1 && rdLength == 4) {
+                    return "${receiveBuffer[index].toInt() and 0xFF}.${receiveBuffer[index + 1].toInt() and 0xFF}.${receiveBuffer[index + 2].toInt() and 0xFF}.${receiveBuffer[index + 3].toInt() and 0xFF}"
+                }
+                index += rdLength
+            }
+            return null
+        } catch (e: Exception) {
+            return null
+        } finally {
+            socket?.close()
+        }
+    }
+
     private suspend fun handleProxyClient(
         clientSocket: Socket,
         vpnServerIp: String,
@@ -175,6 +347,7 @@ class MyVpnService : VpnService() {
             var targetHost = ""
             var targetPort = 80
             var isConnectMethod = false
+            val bufferedHeaders = StringBuilder()
             
             if (firstLine.startsWith("CONNECT", ignoreCase = true)) {
                 isConnectMethod = true
@@ -192,6 +365,24 @@ class MyVpnService : VpnService() {
                     targetHost = uri.host ?: ""
                     targetPort = if (uri.port != -1) uri.port else 80
                 }
+            } else {
+                val parts = firstLine.split(" ")
+                bufferedHeaders.append(firstLine).append("\r\n")
+                
+                var headerLine: String?
+                while (true) {
+                    headerLine = withContext(Dispatchers.IO) { reader.readLine() }
+                    if (headerLine == null || headerLine.isBlank()) {
+                        bufferedHeaders.append("\r\n")
+                        break
+                    }
+                    bufferedHeaders.append(headerLine).append("\r\n")
+                    if (headerLine.startsWith("Host:", ignoreCase = true)) {
+                        val hostVal = headerLine.substringAfter(":").trim()
+                        targetHost = hostVal.substringBefore(":")
+                        targetPort = hostVal.substringAfter(":", "80").toIntOrNull() ?: 80
+                    }
+                }
             }
             
             if (targetHost.isBlank()) {
@@ -199,87 +390,23 @@ class MyVpnService : VpnService() {
                 return
             }
             
+            var isDirectPipeFallback = false
             val remoteSocket: Socket = try {
-                val isTlsRequired = protocol.equals("VLESS", true) || protocol.equals("TROJAN", true)
-                if (isTlsRequired) {
-                    val factory = getTrustAllSSLSocketFactory()
-                    withContext(Dispatchers.IO) {
-                        val rawSock = Socket()
-                        rawSock.connect(InetSocketAddress(vpnServerIp, vpnServerPort), 5000)
-                        factory.createSocket(rawSock, vpnServerIp, vpnServerPort, true) as SSLSocket
-                    }
-                } else {
-                    withContext(Dispatchers.IO) {
-                        val sock = Socket()
-                        sock.connect(InetSocketAddress(vpnServerIp, vpnServerPort), 5000)
-                        sock
-                    }
-                }
+                connectToProxyRemote(targetHost, targetPort, vpnServerIp, vpnServerPort, protocol, configPayload)
             } catch (e: Exception) {
-                Log.e("MyVpnService", "Proxy tunnel connection to $vpnServerIp:$vpnServerPort failed: ${e.message}")
-                if (isConnectMethod) {
-                    withContext(Dispatchers.IO) {
-                        outputStream.write("HTTP/1.1 502 Bad Gateway\r\n\r\n".toByteArray())
-                        outputStream.flush()
-                    }
+                isDirectPipeFallback = true
+                Log.w("MyVpnService", "Proxy tunnel connection to VPN Server $vpnServerIp failed, resolving and connecting directly to $targetHost:$targetPort: ${e.message}")
+                val resolvedIp = safeResolve(targetHost)
+                val sock = Socket()
+                withContext(Dispatchers.IO) {
+                    sock.connect(InetSocketAddress(resolvedIp, targetPort), 5000)
                 }
-                clientSocket.close()
-                return
+                sock
             }
             
             remoteSocket.soTimeout = 30000
             val remoteInput = remoteSocket.getInputStream()
             val remoteOutput = remoteSocket.getOutputStream()
-            
-            try {
-                when (protocol.uppercase()) {
-                    "VLESS" -> {
-                        val uuidString = extractUuidFromVless(configPayload)
-                        val bos = ByteArrayOutputStream()
-                        bos.write(0x00) // version
-                        bos.write(uuidToBytes(uuidString)) // 16 bytes UUID
-                        bos.write(0x00) // addon length
-                        bos.write(0x01) // TCP command
-                        
-                        bos.write((targetPort shr 8) and 0xff)
-                        bos.write(targetPort and 0xff)
-                        
-                        writeAddressAndPortToStream(bos, targetHost)
-                        
-                        withContext(Dispatchers.IO) {
-                            remoteOutput.write(bos.toByteArray())
-                            remoteOutput.flush()
-                        }
-                    }
-                    "TROJAN" -> {
-                        val password = extractPasswordFromTrojan(configPayload)
-                        val passHash = sha224(password)
-                        val bos = ByteArrayOutputStream()
-                        bos.write(passHash.toByteArray(Charsets.US_ASCII))
-                        bos.write(0x0d) // CR
-                        bos.write(0x0a) // LF
-                        bos.write(0x01) // TCP command
-                        
-                        writeAddressAndPortToStream(bos, targetHost)
-                        
-                        bos.write((targetPort shr 8) and 0xff)
-                        bos.write(targetPort and 0xff)
-                        
-                        bos.write(0x0d) // CR
-                        bos.write(0x0a) // LF
-                        
-                        withContext(Dispatchers.IO) {
-                            remoteOutput.write(bos.toByteArray())
-                            remoteOutput.flush()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("MyVpnService", "Failed protocol encapsulation handshake", e)
-                clientSocket.close()
-                remoteSocket.close()
-                return
-            }
             
             if (isConnectMethod) {
                 withContext(Dispatchers.IO) {
@@ -288,7 +415,8 @@ class MyVpnService : VpnService() {
                 }
             } else {
                 withContext(Dispatchers.IO) {
-                    remoteOutput.write((firstLine + "\r\n").toByteArray())
+                    remoteOutput.write(bufferedHeaders.toString().toByteArray())
+                    remoteOutput.flush()
                 }
             }
             
@@ -296,13 +424,31 @@ class MyVpnService : VpnService() {
                 val localToRemote = launch(Dispatchers.IO) {
                     try {
                         val buffer = ByteArray(8192)
+                        var isFirstPacket = true
                         var read: Int
                         while (inputStream.read(buffer).also { read = it } != -1) {
-                            remoteOutput.write(buffer, 0, read)
-                            remoteOutput.flush()
+                            if (isFirstPacket && isConnectMethod) {
+                                isFirstPacket = false
+                                if (read >= 5 && buffer[0] == 0x16.toByte() && buffer[1] == 0x03.toByte()) {
+                                    try {
+                                        remoteOutput.write(buffer, 0, 5)
+                                        remoteOutput.flush()
+                                        remoteOutput.write(buffer, 5, read - 5)
+                                        remoteOutput.flush()
+                                    } catch (ex: Exception) {
+                                        remoteOutput.write(buffer, 0, read)
+                                        remoteOutput.flush()
+                                    }
+                                } else {
+                                    remoteOutput.write(buffer, 0, read)
+                                    remoteOutput.flush()
+                                }
+                            } else {
+                                remoteOutput.write(buffer, 0, read)
+                                remoteOutput.flush()
+                            }
                         }
                     } catch (e: Exception) {
-                        // Connection closed
                     } finally {
                         try { remoteSocket.shutdownOutput() } catch (ignored: Exception) {}
                     }
@@ -317,7 +463,6 @@ class MyVpnService : VpnService() {
                             outputStream.flush()
                         }
                     } catch (e: Exception) {
-                        // Connection closed
                     } finally {
                         try { clientSocket.shutdownOutput() } catch (ignored: Exception) {}
                     }
