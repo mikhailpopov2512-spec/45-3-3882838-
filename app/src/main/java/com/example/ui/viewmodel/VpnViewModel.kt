@@ -37,6 +37,11 @@ class VpnViewModel(private val repository: VpnRepository) : ViewModel() {
     val currentCountry: StateFlow<String> = VpnStateHolder.currentCountry
     val downloadSpeedKbps: StateFlow<Float> = VpnStateHolder.downloadSpeedKbps
     val uploadSpeedKbps: StateFlow<Float> = VpnStateHolder.uploadSpeedKbps
+    val vpnLogs: StateFlow<List<String>> = VpnStateHolder.vpnLogs
+
+    fun clearLogs() {
+        VpnStateHolder.clearLogs()
+    }
 
     init {
         refreshCurrentIp()

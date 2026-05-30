@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -149,6 +151,8 @@ fun DashboardTab(
     val uploadSpeedKbps by viewModel.uploadSpeedKbps.collectAsStateWithLifecycle()
 
     val profilesList by viewModel.profiles.collectAsStateWithLifecycle()
+    val vpnLogs by viewModel.vpnLogs.collectAsStateWithLifecycle()
+    val scrollState = rememberScrollState()
 
     val infiniteTransition = rememberInfiniteTransition(label = "Radar glow")
     val pulseScale by infiniteTransition.animateFloat(
@@ -163,6 +167,7 @@ fun DashboardTab(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(scrollState)
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -520,6 +525,118 @@ fun DashboardTab(
                         color = MutedText,
                         fontFamily = FontFamily.Monospace
                     )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Ray Engine Live Logs Console Terminal
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    color = if (isConnected) GlowGreen.copy(alpha = 0.35f)
+                            else if (isConnecting) ElectricBlue.copy(alpha = 0.35f)
+                            else MutedText.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(16.dp)
+                ),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F0F13))
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isConnected) GlowGreen 
+                                    else if (isConnecting) ElectricBlue 
+                                    else MutedText.copy(alpha = 0.5f)
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "ЛОГИ ЯДРА (RAY-CORE v1.x)",
+                            color = BrightText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Text(
+                        text = "ОЧИСТИТЬ",
+                        color = ElectricBlue,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.clickable {
+                            viewModel.clearLogs()
+                        }
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                        .background(Color(0xFF070709), RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                ) {
+                    val logScrollState = rememberScrollState()
+                    // Auto-scroll to bottom of logs on new lines
+                    LaunchedEffect(vpnLogs.size) {
+                        try {
+                            logScrollState.animateScrollTo(logScrollState.maxValue)
+                        } catch (e: Exception) {
+                            // Safe fallback
+                        }
+                    }
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(logScrollState),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (vpnLogs.isEmpty()) {
+                            Text(
+                                text = "Ожидание событий...",
+                                color = MutedText,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        } else {
+                            vpnLogs.forEach { logLine ->
+                                val textColor = when {
+                                    logLine.contains("[Core]", ignoreCase = true) -> GlowGreen
+                                    logLine.contains("[System]", ignoreCase = true) -> GlowGreen
+                                    logLine.contains("[Probe]", ignoreCase = true) -> Color(0xFFFFB300)
+                                    logLine.contains("[Tunnel]", ignoreCase = true) -> ElectricBlue
+                                    logLine.contains("[Route]", ignoreCase = true) -> Color(0xFFCE93D8)
+                                    else -> MutedText
+                                }
+                                Text(
+                                    text = logLine,
+                                    color = textColor,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    lineHeight = 13.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1226,7 +1343,51 @@ fun SettingsTab(viewModel: VpnViewModel) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Core Engine Option
+                    var activeEngine by remember { mutableStateOf(sharedPrefs.getString("core_engine", "Xray-Core") ?: "Xray-Core") }
+                    Column {
+                        Text("Движок ядра (Routing Core Engine)", color = BrightText, fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val engineOptions = listOf("Xray-Core", "Sing-Box", "V2Ray")
+                            engineOptions.forEach { option ->
+                                val selected = activeEngine == option
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (selected) ElectricBlue else SurfaceCard.copy(alpha = 0.5f)
+                                        )
+                                        .clickable {
+                                            activeEngine = option
+                                            sharedPrefs.edit().putString("core_engine", option).apply()
+                                        }
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (selected) Color.Transparent else MutedText.copy(alpha = 0.3f),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(vertical = 10.dp)
+                                ) {
+                                    Text(
+                                        text = option,
+                                        color = if (selected) Color.White else BrightText,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // MTU Configuration
                     Column {
