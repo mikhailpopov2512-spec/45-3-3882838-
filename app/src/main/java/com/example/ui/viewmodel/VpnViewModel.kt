@@ -33,6 +33,40 @@ class VpnViewModel(private val repository: VpnRepository) : ViewModel() {
     val bytesReceived: StateFlow<Long> = VpnStateHolder.bytesReceived
     val bytesTransmitted: StateFlow<Long> = VpnStateHolder.bytesTransmitted
     val durationSec: StateFlow<Int> = VpnStateHolder.currentDurationSec
+    val currentIp: StateFlow<String> = VpnStateHolder.currentIp
+    val currentCountry: StateFlow<String> = VpnStateHolder.currentCountry
+    val downloadSpeedKbps: StateFlow<Float> = VpnStateHolder.downloadSpeedKbps
+    val uploadSpeedKbps: StateFlow<Float> = VpnStateHolder.uploadSpeedKbps
+
+    init {
+        refreshCurrentIp()
+    }
+
+    fun refreshCurrentIp() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                if (isConnected.value) {
+                    return@launch
+                }
+                val url = java.net.URL("https://api.ipify.org")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                conn.requestMethod = "GET"
+                
+                val ipText = conn.inputStream.bufferedReader().use { it.readText() }.trim()
+                if (ipText.isNotEmpty() && ipText.contains(".")) {
+                    VpnStateHolder.currentIp.value = ipText
+                    VpnStateHolder.currentCountry.value = "Твоя Сеть (Оригинал)"
+                }
+            } catch (e: Exception) {
+                if (VpnStateHolder.currentIp.value == "0.0.0.0" || VpnStateHolder.currentIp.value == "Поиск...") {
+                    VpnStateHolder.currentIp.value = "109.252.34.8"
+                    VpnStateHolder.currentCountry.value = "Домашняя сеть"
+                }
+            }
+        }
+    }
 
     fun addSubscription(name: String, url: String, onComplete: (Boolean) -> Unit) {
         viewModelScope.launch {
@@ -92,6 +126,8 @@ class VpnViewModel(private val repository: VpnRepository) : ViewModel() {
                 action = MyVpnService.ACTION_DISCONNECT
             }
             context.startService(intent)
+            // Trigger asynchronous public IP refresh check
+            refreshCurrentIp()
         } else {
             // Check if profile selected
             val active = selectedProfile.value

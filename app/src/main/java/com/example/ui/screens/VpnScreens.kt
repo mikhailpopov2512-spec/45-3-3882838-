@@ -58,10 +58,6 @@ fun VpnMainScreen(
     
     var activeTab by remember { mutableStateOf(0) } // 0: Dashboard, 1: Server List, 2: Subscriptions, 3: Settings
     
-    val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
-    val isConnecting by viewModel.isConnecting.collectAsStateWithLifecycle()
-    val selectedProfile by viewModel.selectedProfile.collectAsStateWithLifecycle()
-
     Scaffold(
         modifier = modifier
             .fillMaxSize()
@@ -147,10 +143,17 @@ fun DashboardTab(
     val bytesTx by viewModel.bytesTransmitted.collectAsStateWithLifecycle()
     val durationSec by viewModel.durationSec.collectAsStateWithLifecycle()
 
+    val currentIp by viewModel.currentIp.collectAsStateWithLifecycle()
+    val currentCountry by viewModel.currentCountry.collectAsStateWithLifecycle()
+    val downloadSpeedKbps by viewModel.downloadSpeedKbps.collectAsStateWithLifecycle()
+    val uploadSpeedKbps by viewModel.uploadSpeedKbps.collectAsStateWithLifecycle()
+
+    val profilesList by viewModel.profiles.collectAsStateWithLifecycle()
+
     val infiniteTransition = rememberInfiniteTransition(label = "Radar glow")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1.0f,
-        targetValue = 1.08f,
+        targetValue = 1.06f,
         animationSpec = infiniteRepeatable(
             animation = tween(1200, easing = LinearOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -162,30 +165,54 @@ fun DashboardTab(
             .fillMaxSize()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // App Title
-        Text(
-            text = "HAPP VPN",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            color = BrightText,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.padding(top = 16.dp)
-        )
+        // High-fidelity App Title & Status Badge
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "HAPP VPN",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = BrightText,
+                fontFamily = FontFamily.Monospace
+            )
+            
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (isConnected) GlowGreen.copy(alpha = 0.15f)
+                        else if (isConnecting) ElectricBlue.copy(alpha = 0.15f)
+                        else MutedText.copy(alpha = 0.1f)
+                    )
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Text(
+                    text = if (isConnected) "ГВАРД АКТИВЕН" else if (isConnecting) "ПОДКЛЮЧЕНИЕ..." else "БЕЗ ЗАЩИТЫ",
+                    color = if (isConnected) GlowGreen else if (isConnecting) ElectricBlue else MutedText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
-        // Glow Shield status
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
+        // Concentric pulsing central trigger dial with custom neon states
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .weight(1.1f)
+                .fillMaxWidth(),
         ) {
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(230.dp * (if (isConnected || isConnecting) pulseScale else 1.0f))
+                    .size(210.dp * (if (isConnected || isConnecting) pulseScale else 1.0f))
                     .shadow(
-                        elevation = 20.dp,
+                        elevation = if (isConnected) 24.dp else 8.dp,
                         shape = CircleShape,
                         ambientColor = if (isConnected) GlowGreen else ElectricBlue,
                         spotColor = if (isConnected) GlowGreen else ElectricBlue
@@ -195,7 +222,7 @@ fun DashboardTab(
                         Brush.verticalGradient(
                             listOf(
                                 SurfaceCard,
-                                SurfaceCard.copy(alpha = 0.4f)
+                                SurfaceCard.copy(alpha = 0.35f)
                             )
                         )
                     )
@@ -203,8 +230,8 @@ fun DashboardTab(
                         width = 4.dp,
                         color = when {
                             isConnected -> GlowGreen
-                            isConnecting -> ElectricBlue.copy(alpha = 0.6f)
-                            else -> MutedText.copy(alpha = 0.4f)
+                            isConnecting -> ElectricBlue
+                            else -> MutedText.copy(alpha = 0.3f)
                         },
                         shape = CircleShape
                     )
@@ -214,27 +241,28 @@ fun DashboardTab(
                     .testTag("connect_button")
             ) {
                 Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
-                        imageVector = if (isConnected) Icons.Filled.Power else Icons.Filled.PowerOff,
-                        contentDescription = "Power status",
+                        imageVector = if (isConnected) Icons.Filled.VerifiedUser else Icons.Filled.Security,
+                        contentDescription = "Core Security Connection State",
                         tint = when {
                             isConnected -> GlowGreen
                             isConnecting -> ElectricBlue
-                            else -> MutedText
+                            else -> MutedText.copy(alpha = 0.8f)
                         },
-                        modifier = Modifier.size(56.dp)
+                        modifier = Modifier.size(54.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = when {
-                            isConnected -> "ПОДКЛЮЧЕНО"
-                            isConnecting -> "СОЕДИНЕНИЕ..."
+                            isConnected -> "ОТКЛЮЧИТЬ"
+                            isConnecting -> "СОЕДИНЕНИЕ"
                             else -> "ПОДКЛЮЧИТЬ"
                         },
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = when {
                             isConnected -> GlowGreen
                             isConnecting -> ElectricBlue
@@ -247,6 +275,7 @@ fun DashboardTab(
                             text = formatDuration(durationSec),
                             fontSize = 14.sp,
                             fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
                             color = GlowGreen
                         )
                     }
@@ -254,12 +283,85 @@ fun DashboardTab(
             }
         }
 
-        // Active selected server display card
+        // Live IP detector and secure shield state card
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(46.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isConnected) GlowGreen.copy(alpha = 0.12f)
+                                else ElectricBlue.copy(alpha = 0.1f)
+                            )
+                    ) {
+                        Icon(
+                            imageVector = if (isConnected) Icons.Filled.Shield else Icons.Filled.PrivacyTip,
+                            contentDescription = "Shield Indicator",
+                            tint = if (isConnected) GlowGreen else ElectricBlue,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.width(14.dp))
+                    
+                    Column {
+                        Text(
+                            text = if (isConnected) "Ваш VPN IP" else "Твой Реальный IP",
+                            color = MutedText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = currentIp,
+                            color = BrightText,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = currentCountry,
+                            color = if (isConnected) GlowGreen else MutedText,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "ЗАЩИТА",
+                        color = MutedText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (isConnected) "АКТИВНА" else "ОТКЛЮЧЕНА",
+                        color = if (isConnected) GlowGreen else Color(0xFFFF5252),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+        }
+
+        // Active selected server display card with Auto-Select accelerator option
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceCard)
         ) {
             Row(
@@ -269,111 +371,155 @@ fun DashboardTab(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Выбранный сервер",
+                        text = "Выбранная локация",
                         color = MutedText,
                         fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = selectedProfile?.name ?: "Выберите сервер во вкладке...",
+                        text = selectedProfile?.name ?: "Локация не выбрана",
                         color = BrightText,
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Bold
                     )
                     if (selectedProfile != null) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "${selectedProfile?.protocol} • ${selectedProfile?.server}:${selectedProfile?.port}",
                             color = MutedText,
-                            fontSize = 12.sp
+                            fontSize = 11.sp
+                        )
+                    } else if (profilesList.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Выберите сервер во вкладке «Серверы»",
+                            color = ElectricBlue,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                // Direct tip
+                            }
                         )
                     }
                 }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(
-                            if (selectedProfile != null) ElectricBlue.copy(alpha = 0.15f)
-                            else SurfaceCard.copy(alpha = 0.5f)
+
+                // If profiles exist but none is selected, offer a quick tap button
+                if (selectedProfile == null && profilesList.isNotEmpty()) {
+                    Button(
+                        onClick = {
+                            val fastest = profilesList.filter { it.pingMs > 0 }.minByOrNull { it.pingMs }
+                                ?: profilesList.firstOrNull()
+                            if (fastest != null) {
+                                viewModel.selectProfile(fastest)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Text("АВТО", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.White)
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (selectedProfile != null) ElectricBlue.copy(alpha = 0.15f)
+                                else SurfaceCard.copy(alpha = 0.5f)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = selectedProfile?.countryCode ?: "UN",
+                            color = if (selectedProfile != null) ElectricBlue else MutedText,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = selectedProfile?.countryCode ?: "UN",
-                        color = if (selectedProfile != null) ElectricBlue else MutedText,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    }
                 }
             }
         }
 
-        // Real-time Traffic throughput statistics panels
+        // Live Real-time speeds metrics gauge grid
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
+                .padding(bottom = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Upload bytes statistics
+            // Upload stats
             Card(
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = SurfaceCard)
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(16.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.ArrowUpward,
-                        contentDescription = "Upload speed",
-                        tint = ElectricBlue,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("Отправлено", fontSize = 11.sp, color = MutedText)
-                        Text(
-                            text = formatBytes(bytesTx),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BrightText,
-                            fontFamily = FontFamily.Monospace
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowUpward,
+                            contentDescription = "Upload direction",
+                            tint = ElectricBlue,
+                            modifier = Modifier.size(18.dp)
                         )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("ОТПРАВКА", fontSize = 11.sp, color = MutedText, fontWeight = FontWeight.Bold)
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (isConnected) String.format("%.1f KB/s", uploadSpeedKbps) else "0.0 KB/s",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = BrightText,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = formatBytes(bytesTx),
+                        fontSize = 11.sp,
+                        color = MutedText,
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
             }
 
-            // Download bytes statistics
+            // Download stats
             Card(
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = SurfaceCard)
             ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.padding(16.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.ArrowDownward,
-                        contentDescription = "Download speed",
-                        tint = GlowGreen,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("Скачано", fontSize = 11.sp, color = MutedText)
-                        Text(
-                            text = formatBytes(bytesRx),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BrightText,
-                            fontFamily = FontFamily.Monospace
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowDownward,
+                            contentDescription = "Download direction",
+                            tint = GlowGreen,
+                            modifier = Modifier.size(18.dp)
                         )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("СКАЧИВАНИЕ", fontSize = 11.sp, color = MutedText, fontWeight = FontWeight.Bold)
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (isConnected) String.format("%.1f KB/s", downloadSpeedKbps) else "0.0 KB/s",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = BrightText,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = formatBytes(bytesRx),
+                        fontSize = 11.sp,
+                        color = MutedText,
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
             }
         }

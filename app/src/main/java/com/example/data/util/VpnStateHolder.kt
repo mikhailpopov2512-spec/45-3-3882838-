@@ -10,4 +10,8 @@ object VpnStateHolder {
     val bytesReceived = MutableStateFlow(0L)
     val bytesTransmitted = MutableStateFlow(0L)
     val currentDurationSec = MutableStateFlow(0)
+    val currentIp = MutableStateFlow("0.0.0.0")
+    val currentCountry = MutableStateFlow("Определение...")
+    val downloadSpeedKbps = MutableStateFlow(0f)
+    val uploadSpeedKbps = MutableStateFlow(0f)
 }
