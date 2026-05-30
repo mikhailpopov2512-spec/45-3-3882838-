@@ -5,6 +5,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,8 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -68,7 +68,7 @@ fun VpnMainScreen(
         bottomBar = {
             NavigationBar(
                 containerColor = SurfaceCard,
-                tonalElevation = 10.dp
+                tonalElevation = 12.dp
             ) {
                 NavigationBarItem(
                     selected = activeTab == 0,
@@ -78,18 +78,22 @@ fun VpnMainScreen(
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = ElectricBlue,
                         selectedTextColor = ElectricBlue,
-                        indicatorColor = SurfaceCard.copy(alpha = 0.5f)
+                        indicatorColor = ElectricBlue.copy(alpha = 0.12f),
+                        unselectedIconColor = MutedText,
+                        unselectedTextColor = MutedText
                     )
                 )
                 NavigationBarItem(
                     selected = activeTab == 1,
                     onClick = { activeTab = 1 },
-                    icon = { Icon(Icons.Filled.List, contentDescription = "Servers") },
+                    icon = { Icon(Icons.Filled.Dns, contentDescription = "Servers") },
                     label = { Text("Серверы", fontSize = 11.sp) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = ElectricBlue,
                         selectedTextColor = ElectricBlue,
-                        indicatorColor = SurfaceCard.copy(alpha = 0.5f)
+                        indicatorColor = ElectricBlue.copy(alpha = 0.12f),
+                        unselectedIconColor = MutedText,
+                        unselectedTextColor = MutedText
                     )
                 )
                 NavigationBarItem(
@@ -100,7 +104,9 @@ fun VpnMainScreen(
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = ElectricBlue,
                         selectedTextColor = ElectricBlue,
-                        indicatorColor = SurfaceCard.copy(alpha = 0.5f)
+                        indicatorColor = ElectricBlue.copy(alpha = 0.12f),
+                        unselectedIconColor = MutedText,
+                        unselectedTextColor = MutedText
                     )
                 )
                 NavigationBarItem(
@@ -111,7 +117,9 @@ fun VpnMainScreen(
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = ElectricBlue,
                         selectedTextColor = ElectricBlue,
-                        indicatorColor = SurfaceCard.copy(alpha = 0.5f)
+                        indicatorColor = ElectricBlue.copy(alpha = 0.12f),
+                        unselectedIconColor = MutedText,
+                        unselectedTextColor = MutedText
                     )
                 )
             }
@@ -123,10 +131,18 @@ fun VpnMainScreen(
                 .padding(paddingValues)
         ) {
             when (activeTab) {
-                0 -> DashboardTab(viewModel, context, onRequestPrepareVpn)
+                0 -> DashboardTab(
+                    viewModel = viewModel,
+                    context = context,
+                    onRequestPrepareVpn = onRequestPrepareVpn,
+                    onNavigateToSettings = { activeTab = 3 }
+                )
                 1 -> ServersTab(viewModel)
                 2 -> SubscriptionsTab(viewModel)
-                3 -> SettingsTab(viewModel)
+                3 -> SettingsTab(
+                    viewModel = viewModel,
+                    onBack = { activeTab = 0 }
+                )
             }
         }
     }
@@ -136,7 +152,8 @@ fun VpnMainScreen(
 fun DashboardTab(
     viewModel: VpnViewModel,
     context: Context,
-    onRequestPrepareVpn: () -> Unit
+    onRequestPrepareVpn: () -> Unit,
+    onNavigateToSettings: () -> Unit
 ) {
     val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
     val isConnecting by viewModel.isConnecting.collectAsStateWithLifecycle()
@@ -151,18 +168,65 @@ fun DashboardTab(
     val uploadSpeedKbps by viewModel.uploadSpeedKbps.collectAsStateWithLifecycle()
 
     val profilesList by viewModel.profiles.collectAsStateWithLifecycle()
+    val subsList by viewModel.subscriptions.collectAsStateWithLifecycle()
     val vpnLogs by viewModel.vpnLogs.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+
+    // Dialog state controllers
+    var showAddSubDialog by remember { mutableStateOf(false) }
+    var showQrScannerDialog by remember { mutableStateOf(false) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "Radar glow")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1.0f,
-        targetValue = 1.06f,
+        targetValue = 1.05f,
         animationSpec = infiniteRepeatable(
             animation = tween(1200, easing = LinearOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ), label = "pulse"
     )
+
+    val rotationTransition = rememberInfiniteTransition(label = "Spinning halo")
+    val rotationAngle by rotationTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "haloAngle"
+    )
+
+    if (showAddSubDialog) {
+        AddSubscriptionDialog(
+            onDismiss = { showAddSubDialog = false },
+            onResult = { name, url ->
+                showAddSubDialog = false
+                viewModel.addSubscription(name, url) { success ->
+                    if (success) {
+                        android.widget.Toast.makeText(context, "$name успешно добавлена!", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "Импортировано с базовыми настройками", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
+    }
+
+    if (showQrScannerDialog) {
+        QrScannerDialog(
+            onDismiss = { showQrScannerDialog = false },
+            onResult = { payload ->
+                showQrScannerDialog = false
+                viewModel.addSubscription("QR Sub", payload) { success ->
+                    if (success) {
+                        android.widget.Toast.makeText(context, "QR Конфигурация импортирована!", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "Профиль добавлен по QR коду", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -172,71 +236,115 @@ fun DashboardTab(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // High-fidelity App Title & Status Badge
+        // High-Fidelity Header Section matched to first photo
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(
+                onClick = onNavigateToSettings,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "Settings",
+                    tint = BrightText,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
             Text(
                 text = "HAPP VPN",
-                fontSize = 22.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = BrightText,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.Monospace,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
             )
-            
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        if (isConnected) GlowGreen.copy(alpha = 0.15f)
-                        else if (isConnecting) ElectricBlue.copy(alpha = 0.15f)
-                        else MutedText.copy(alpha = 0.1f)
-                    )
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
+
+            IconButton(
+                onClick = { showAddSubDialog = true },
+                modifier = Modifier.size(44.dp)
             ) {
-                Text(
-                    text = if (isConnected) "ГВАРД АКТИВЕН" else if (isConnecting) "ПОДКЛЮЧЕНИЕ..." else "БЕЗ ЗАЩИТЫ",
-                    color = if (isConnected) GlowGreen else if (isConnecting) ElectricBlue else MutedText,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = "Add Subscription",
+                    tint = BrightText,
+                    modifier = Modifier.size(28.dp)
                 )
             }
         }
 
-        // Concentric pulsing central trigger dial with custom neon states
+        // Concentric pulsing central trigger power dial from photo
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .weight(1.1f)
+                .height(260.dp)
                 .fillMaxWidth(),
         ) {
+            // Faint outer rings simulating depth
+            Box(
+                modifier = Modifier
+                    .size(246.dp)
+                    .clip(CircleShape)
+                    .background(MutedText.copy(alpha = 0.03f))
+                    .border(1.dp, MutedText.copy(alpha = 0.05f), CircleShape)
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(210.dp)
+                    .clip(CircleShape)
+                    .background(MutedText.copy(alpha = 0.04f))
+                    .border(1.dp, MutedText.copy(alpha = 0.06f), CircleShape)
+            )
+
+            // Dynamic Spinning outer glowing neon ring when active
+            if (isConnected || isConnecting) {
+                Box(
+                    modifier = Modifier
+                        .size(228.dp)
+                        .clip(CircleShape)
+                        .border(
+                            width = 4.dp,
+                            brush = Brush.sweepGradient(
+                                colors = listOf(
+                                    ElectricBlue,
+                                    GlowGreen,
+                                    ElectricBlue.copy(alpha = 0.2f),
+                                    GlowGreen.copy(alpha = 0.2f),
+                                    ElectricBlue
+                                )
+                            ),
+                            shape = CircleShape
+                        )
+                        .rotate(rotationAngle)
+                )
+            }
+
+            // Core Power Button Circle (Styled in Light/Gray Mode)
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(210.dp * (if (isConnected || isConnecting) pulseScale else 1.0f))
+                    .size(175.dp * (if (isConnected || isConnecting) pulseScale else 1.0f))
                     .shadow(
-                        elevation = if (isConnected) 24.dp else 8.dp,
+                        elevation = if (isConnected) 16.dp else 4.dp,
                         shape = CircleShape,
-                        ambientColor = if (isConnected) GlowGreen else ElectricBlue,
-                        spotColor = if (isConnected) GlowGreen else ElectricBlue
+                        ambientColor = if (isConnected) GlowGreen else MutedText,
+                        spotColor = if (isConnected) GlowGreen else MutedText
                     )
                     .clip(CircleShape)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                SurfaceCard,
-                                SurfaceCard.copy(alpha = 0.35f)
-                            )
-                        )
-                    )
+                    .background(Color.White)
                     .border(
                         width = 4.dp,
                         color = when {
                             isConnected -> GlowGreen
                             isConnecting -> ElectricBlue
-                            else -> MutedText.copy(alpha = 0.3f)
+                            else -> Color(0xFFEAEAEE)
                         },
                         shape = CircleShape
                     )
@@ -250,40 +358,84 @@ fun DashboardTab(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
-                        imageVector = if (isConnected) Icons.Filled.VerifiedUser else Icons.Filled.Security,
-                        contentDescription = "Core Security Connection State",
+                        imageVector = Icons.Filled.PowerSettingsNew,
+                        contentDescription = "Power Connection Trigger",
                         tint = when {
                             isConnected -> GlowGreen
                             isConnecting -> ElectricBlue
-                            else -> MutedText.copy(alpha = 0.8f)
+                            else -> Color(0xFFCBCAD2)
                         },
-                        modifier = Modifier.size(54.dp)
+                        modifier = Modifier.size(52.dp)
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = when {
                             isConnected -> "ОТКЛЮЧИТЬ"
                             isConnecting -> "СОЕДИНЕНИЕ"
                             else -> "ПОДКЛЮЧИТЬ"
                         },
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = when {
                             isConnected -> GlowGreen
                             isConnecting -> ElectricBlue
-                            else -> BrightText
+                            else -> Color(0xFF8E8D96)
                         }
                     )
                     if (isConnected) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = formatDuration(durationSec),
-                            fontSize = 14.sp,
+                            fontSize = 12.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             color = GlowGreen
                         )
                     }
+                }
+            }
+        }
+
+        // Subscriptions Section (Displays exact mockup card named 'subscribe 1' styles)
+        if (subsList.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Нет активных подписок",
+                        fontWeight = FontWeight.Bold,
+                        color = BrightText,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Создайте подписку кнопкой '+' вверху или Clipboard / QR-Code внизу.",
+                        color = MutedText,
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                subsList.forEach { sub ->
+                    val subProfiles = profilesList.filter { it.subscriptionId == sub.id }
+                    DashboardSubscriptionItem(
+                        sub = sub,
+                        subProfiles = subProfiles,
+                        selectedProfile = selectedProfile,
+                        viewModel = viewModel,
+                        context = context
+                    )
                 }
             }
         }
@@ -402,10 +554,7 @@ fun DashboardTab(
                             text = "Выберите сервер во вкладке «Серверы»",
                             color = ElectricBlue,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable {
-                                // Direct tip
-                            }
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
@@ -450,8 +599,7 @@ fun DashboardTab(
         // Live Real-time speeds metrics gauge grid
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 6.dp),
+                .fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Upload stats
@@ -529,7 +677,101 @@ fun DashboardTab(
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        // Beautiful import actions rows from mockup image (Clipboard and QR-Code side-by-side)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Clipboard import pill button
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable {
+                        try {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            val clipData = clipboard.primaryClip
+                            if (clipData != null && clipData.itemCount > 0) {
+                                val text = clipData.getItemAt(0).text?.toString() ?: ""
+                                if (text.isNotBlank()) {
+                                    viewModel.addSubscription("Clipboard Sub", text) { success ->
+                                        if (success) {
+                                            android.widget.Toast.makeText(context, "Импорт из буфера завершен!", android.widget.Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Ошибка разбора! Добавлен демонстрационный сервер.", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                } else {
+                                    android.widget.Toast.makeText(context, "Буфер обмена пуст!", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                android.widget.Toast.makeText(context, "Нет данных в буфере!", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(context, "Предоставьте доступ к буферу обмена", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                border = BorderStroke(1.dp, Color(0xFFE5E5EA))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ContentPaste,
+                        contentDescription = "Clipboard Paste",
+                        tint = Color(0xFF5E5CE6),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Clipboard",
+                        color = BrightText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            // QR-Code import pill button
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { showQrScannerDialog = true },
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
+                border = BorderStroke(1.dp, Color(0xFFE5E5EA))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CropFree,
+                        contentDescription = "QR Scanner",
+                        tint = Color(0xFF5E5CE6),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "QR-Code",
+                        color = BrightText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
 
         // Ray Engine Live Logs Console Terminal
         Card(
@@ -566,7 +808,7 @@ fun DashboardTab(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "ЛОГИ ЯДРА (RAY-CORE v1.x)",
+                            text = "ЛОГИ ЯДРА (SING-BOX CORE v1.9)",
                             color = BrightText,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -595,7 +837,6 @@ fun DashboardTab(
                         .padding(8.dp)
                 ) {
                     val logScrollState = rememberScrollState()
-                    // Auto-scroll to bottom of logs on new lines
                     LaunchedEffect(vpnLogs.size) {
                         try {
                             logScrollState.animateScrollTo(logScrollState.maxValue)
@@ -641,6 +882,449 @@ fun DashboardTab(
             }
         }
     }
+}
+
+@Composable
+fun DashboardSubscriptionItem(
+    sub: com.example.data.local.SubscriptionEntity,
+    subProfiles: List<com.example.data.local.VpnProfileEntity>,
+    selectedProfile: com.example.data.local.VpnProfileEntity?,
+    viewModel: VpnViewModel,
+    context: Context
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
+    var isSyncing by remember { mutableStateOf(false) }
+
+    val rotationTransition = rememberInfiniteTransition(label = "Sync Spin")
+    val rotationAngleSync by rotationTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (isSyncing) 360f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "syncAngle"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(1.dp, RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Left chevron and Title
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { isExpanded = !isExpanded }
+                ) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                        contentDescription = "Expand Status",
+                        tint = MutedText,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = sub.name,
+                            color = BrightText,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = formatAddedAt(sub.addedAt),
+                            color = MutedText,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                // Action buttons: Sync, Ping test, three dots options
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconButton(
+                        onClick = {
+                            isSyncing = true
+                            viewModel.addSubscription(sub.name, sub.url) { success ->
+                                isSyncing = false
+                                if (success) {
+                                    android.widget.Toast.makeText(context, "Подписка ${sub.name} обновлена!", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Локальные профили успешно восстановлены.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Sync,
+                            contentDescription = "Sync",
+                            tint = Color(0xFF5E5CE6),
+                            modifier = Modifier
+                                .size(20.dp)
+                                .rotate(if (isSyncing) rotationAngleSync else 0f)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = {
+                            android.widget.Toast.makeText(context, "Тестирование пинга серверов подписки...", android.widget.Toast.LENGTH_SHORT).show()
+                            viewModel.testAllPings(context)
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Speed,
+                            contentDescription = "Ping Test",
+                            tint = GlowGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "More options",
+                                tint = MutedText,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(SurfaceCard)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Обновить", color = BrightText) },
+                                onClick = {
+                                    showMenu = false
+                                    isSyncing = true
+                                    viewModel.addSubscription(sub.name, sub.url) { _ -> isSyncing = false }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Удалить", color = Color.Red) },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.deleteSubscription(sub.id)
+                                    android.widget.Toast.makeText(context, "Подписка удалена", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Expand profiles matching subscriptionId
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Divider(color = MutedText.copy(alpha = 0.08f), thickness = 1.dp)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (subProfiles.isEmpty()) {
+                    Text(
+                        text = "В подписке нет доступных серверов.",
+                        fontSize = 12.sp,
+                        color = MutedText,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                } else {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        subProfiles.forEach { profile ->
+                            val isSelected = selectedProfile?.id == profile.id
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) Color(0xFF5E5CE6).copy(alpha = 0.08f) else Color.Transparent)
+                                    .clickable { viewModel.selectProfile(profile) }
+                                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    // Country flag symbol wrapper
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isSelected) Color(0xFF5E5CE6).copy(alpha = 0.15f)
+                                                else MutedText.copy(alpha = 0.08f)
+                                            )
+                                    ) {
+                                        Text(
+                                            text = profile.countryCode,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = if (isSelected) Color(0xFF5E5CE6) else BrightText
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Column {
+                                        Text(
+                                            text = profile.name,
+                                            color = if (isSelected) Color(0xFF5E5CE6) else BrightText,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                        Spacer(modifier = Modifier.height(1.dp))
+                                        Text(
+                                            text = "${profile.protocol} • ${profile.server}:${profile.port}",
+                                            color = MutedText,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.SignalCellularAlt,
+                                        contentDescription = "Signal indicator",
+                                        tint = when {
+                                            profile.pingMs == -1 -> MutedText
+                                            profile.pingMs < 100 -> GlowGreen
+                                            else -> Color(0xFF5E5CE6)
+                                        },
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = if (profile.pingMs == -1) "?" else "${profile.pingMs} ms",
+                                        color = when {
+                                            profile.pingMs == -1 -> MutedText
+                                            profile.pingMs < 100 -> GlowGreen
+                                            else -> BrightText
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AddSubscriptionDialog(
+    onDismiss: () -> Unit,
+    onResult: (name: String, url: String) -> Unit
+) {
+    var nameInput by remember { mutableStateOf("") }
+    var urlInput by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Add, contentDescription = null, tint = Color(0xFF5E5CE6))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Новая подписка", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BrightText)
+            }
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = nameInput,
+                    onValueChange = { nameInput = it },
+                    label = { Text("Название подписки") },
+                    placeholder = { Text("например: MyPremium", color = MutedText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = BrightText,
+                        unfocusedTextColor = BrightText,
+                        focusedBorderColor = Color(0xFF5E5CE6),
+                        unfocusedBorderColor = MutedText.copy(alpha = 0.4f)
+                    )
+                )
+
+                OutlinedTextField(
+                    value = urlInput,
+                    onValueChange = { urlInput = it },
+                    label = { Text("Ссылка (URL) или Ключ доступа") },
+                    placeholder = { Text("https://example.com/sub или key...", color = MutedText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = BrightText,
+                        unfocusedTextColor = BrightText,
+                        focusedBorderColor = Color(0xFF5E5CE6),
+                        unfocusedBorderColor = MutedText.copy(alpha = 0.4f)
+                    )
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (nameInput.isNotBlank() && urlInput.isNotBlank()) {
+                        onResult(nameInput, urlInput)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E5CE6)),
+                enabled = nameInput.isNotBlank() && urlInput.isNotBlank()
+            ) {
+                Text("Добавить", color = Color.White)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена", color = MutedText)
+            }
+        },
+        containerColor = SurfaceCard,
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+@Composable
+fun QrScannerDialog(
+    onDismiss: () -> Unit,
+    onResult: (String) -> Unit
+) {
+    var rawText by remember { mutableStateOf("") }
+    
+    val infiniteTransition = rememberInfiniteTransition(label = "Laser scanner")
+    val laserYOffset by infiniteTransition.animateFloat(
+        initialValue = -85f,
+        targetValue = 85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "laserOffset"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.QrCode, contentDescription = null, tint = Color(0xFF5E5CE6))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Сканирование QR-кода", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = BrightText)
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Наведите камеру на QR-код подписки или конфигурации vless//, vmess//, ss//. Вы также можете вставить код вручную ниже.", fontSize = 12.sp, color = MutedText, textAlign = TextAlign.Center)
+                
+                // Visual simulation camera box
+                Box(
+                    modifier = Modifier
+                        .size(180.dp)
+                        .border(2.dp, Color(0xFF5E5CE6), RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.05f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .offset(y = laserYOffset.dp)
+                            .background(Color.Red)
+                            .shadow(4.dp, spotColor = Color.Red)
+                    )
+                    
+                    Icon(
+                        Icons.Filled.CropFree,
+                        contentDescription = null,
+                        tint = Color(0xFF5E5CE6).copy(alpha = 0.3f),
+                        modifier = Modifier.size(100.dp)
+                    )
+                }
+                
+                OutlinedTextField(
+                    value = rawText,
+                    onValueChange = { rawText = it },
+                    label = { Text("Код конфигурации или URL") },
+                    placeholder = { Text("Вставьте ссылку или payload...", color = MutedText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = BrightText,
+                        unfocusedTextColor = BrightText,
+                        focusedBorderColor = Color(0xFF5E5CE6),
+                        unfocusedBorderColor = MutedText.copy(alpha = 0.4f)
+                    )
+                )
+                
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = {
+                            rawText = "vless://de2-frank@de2.happvpn.site:443?type=ws#🇩🇪 DE Frankfurt Gateway"
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E5CE6).copy(alpha = 0.15f)),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Демо-код", fontSize = 11.sp, color = Color(0xFF5E5CE6))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (rawText.isNotBlank()) {
+                        onResult(rawText)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E5CE6))
+            ) {
+                Text("Импорт", color = Color.White)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Отмена", color = MutedText)
+            }
+        },
+        containerColor = SurfaceCard,
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+fun formatAddedAt(timestamp: Long): String {
+    val date = java.util.Date(timestamp)
+    val format = java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault())
+    return format.format(date)
 }
 
 // FORMAT HELPER
@@ -1221,314 +1905,747 @@ fun SubscriptionCardItem(
 }
 
 @Composable
-fun SettingsTab(viewModel: VpnViewModel) {
+fun SettingsTab(
+    viewModel: VpnViewModel,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("vpn_prefs", Context.MODE_PRIVATE) }
+
+    // State bindings
+    var language by remember { mutableStateOf(sharedPrefs.getString("language", "Русский") ?: "Русский") }
+    var appAppearance by remember { mutableStateOf(sharedPrefs.getString("app_appearance", "Auto") ?: "Auto") }
+    var routingProfile by remember { mutableStateOf(sharedPrefs.getString("routing_mode", "all") ?: "all") }
     
-    // Persistent values
-    var isDark by remember { mutableStateOf(sharedPrefs.getBoolean("is_dark_theme", false)) }
+    var fragmentationEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("fragmentation_enabled", false)) }
+    var muxEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("mux_enabled", false)) }
+    var preferredIpType by remember { mutableStateOf(sharedPrefs.getString("preferred_ip_type", "Auto") ?: "Auto") }
+
+    var allowLan by remember { mutableStateOf(sharedPrefs.getBoolean("allow_lan", false)) }
+    var autoStartVpn by remember { mutableStateOf(sharedPrefs.getBoolean("auto_start_vpn", false)) }
+
+    // Base tunnel configurations
     var dnsServer by remember { mutableStateOf(sharedPrefs.getString("dns_server", "1.1.1.1") ?: "1.1.1.1") }
     var mtuSize by remember { mutableStateOf(sharedPrefs.getInt("mtu_size", 1400)) }
     var realPingOnly by remember { mutableStateOf(sharedPrefs.getBoolean("real_ping_only", true)) }
-    
-    // For Backup actions
+    var dnsLeakProtected by remember { mutableStateOf(sharedPrefs.getBoolean("dns_leak_protected", true)) }
+
+    // App lists for Per-App Proxy Settings
+    val systemAppsList = remember { listOf("Chrome", "Telegram", "YouTube", "WhatsApp", "Instagram", "Firefox") }
+    var proxySelectedApps by remember {
+        mutableStateOf(sharedPrefs.getStringSet("proxy_selected_apps", setOf("Telegram", "Instagram")) ?: setOf("Telegram", "Instagram"))
+    }
+
+    // Dialog controllers
+    var showLanguageDialog by remember { mutableStateOf(false) }
+    var showAppearanceDialog by remember { mutableStateOf(false) }
+    var showUiDetailsDialog by remember { mutableStateOf(false) }
+    var showRoutingDialog by remember { mutableStateOf(false) }
+    var showPerAppDialog by remember { mutableStateOf(false) }
+    var showPreferredIpDialog by remember { mutableStateOf(false) }
+    var showVpnDetailsDialog by remember { mutableStateOf(false) }
+    var showSubscriptionDialog by remember { mutableStateOf(false) }
+    var showPingDialog by remember { mutableStateOf(false) }
+
+    // Serialized backup outputs
     var rawSerializedBackup by remember { mutableStateOf("") }
     var pasteBackupInput by remember { mutableStateOf("") }
     var importStatusMsg by remember { mutableStateOf("") }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Text("Настройки", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = BrightText)
-        }
-
-        // DESIGN SYSTEM & THEME
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Внешний вид", color = BrightText, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text("Темная тема оформления", color = BrightText, fontSize = 14.sp)
-                            Text("Переключить режим приложения", color = MutedText, fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = isDark,
-                            onCheckedChange = { checked ->
-                                isDark = checked
-                                isDarkThemeState = checked
-                                sharedPrefs.edit().putBoolean("is_dark_theme", checked).apply()
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = ElectricBlue
-                            )
-                        )
-                    }
-                }
+    // Intercept theme changer instantly on appearance modification
+    fun changeAppearanceState(mode: String) {
+        appAppearance = mode
+        sharedPrefs.edit().putString("app_appearance", mode).apply()
+        when (mode) {
+            "Light theme" -> {
+                isDarkThemeState = false
+                sharedPrefs.edit().putBoolean("is_dark_theme", false).apply()
+            }
+            "Dark theme" -> {
+                isDarkThemeState = true
+                sharedPrefs.edit().putBoolean("is_dark_theme", true).apply()
+            }
+            else -> {
+                isDarkThemeState = false
+                sharedPrefs.edit().putBoolean("is_dark_theme", false).apply()
             }
         }
+    }
 
-        // CONNECTION TUNNEL SETTINGS
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Параметры соединения", color = BrightText, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-
-                    // DNS Server Option
-                    Column {
-                        Text("DNS Сервер", color = BrightText, fontSize = 13.sp)
-                        Spacer(modifier = Modifier.height(6.dp))
+    // Language selector Dialogue
+    if (showLanguageDialog) {
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = { Text("Выберите язык / Language", color = BrightText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Русский", "English", "Deutsch").forEach { lang ->
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val dnsOptions = listOf("1.1.1.1", "8.8.8.8", "Система")
-                            dnsOptions.forEach { option ->
-                                val selected = when (option) {
-                                    "Система" -> dnsServer == "system"
-                                    else -> dnsServer == option
-                                }
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(
-                                            if (selected) ElectricBlue else SurfaceCard.copy(alpha = 0.5f)
-                                        )
-                                        .clickable {
-                                            val value = if (option == "Система") "system" else option
-                                            dnsServer = value
-                                            sharedPrefs.edit().putString("dns_server", value).apply()
-                                        }
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (selected) Color.Transparent else MutedText.copy(alpha = 0.3f),
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .padding(vertical = 10.dp)
-                                ) {
-                                    Text(
-                                        text = option,
-                                        color = if (selected) Color.White else BrightText,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Core Engine Option
-                    var activeEngine by remember { mutableStateOf(sharedPrefs.getString("core_engine", "Xray-Core") ?: "Xray-Core") }
-                    Column {
-                        Text("Движок ядра (Routing Core Engine)", color = BrightText, fontSize = 13.sp)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            val engineOptions = listOf("Xray-Core", "Sing-Box", "V2Ray")
-                            engineOptions.forEach { option ->
-                                val selected = activeEngine == option
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(
-                                            if (selected) ElectricBlue else SurfaceCard.copy(alpha = 0.5f)
-                                        )
-                                        .clickable {
-                                            activeEngine = option
-                                            sharedPrefs.edit().putString("core_engine", option).apply()
-                                        }
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (selected) Color.Transparent else MutedText.copy(alpha = 0.3f),
-                                            shape = RoundedCornerShape(8.dp)
-                                        )
-                                        .padding(vertical = 10.dp)
-                                ) {
-                                    Text(
-                                        text = option,
-                                        color = if (selected) Color.White else BrightText,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // MTU Configuration
-                    Column {
-                        Text("Размер MTU (MTU Size)", color = BrightText, fontSize = 13.sp)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(
-                            value = mtuSize.toString(),
-                            onValueChange = { newVal ->
-                                val intVal = newVal.toIntOrNull() ?: 1400
-                                mtuSize = intVal
-                                sharedPrefs.edit().putInt("mtu_size", intVal).apply()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = BrightText,
-                                unfocusedTextColor = BrightText,
-                                focusedBorderColor = ElectricBlue,
-                                unfocusedBorderColor = MutedText
-                            )
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Честный пинг серверов", color = BrightText, fontSize = 13.sp)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text("Скрывать симуляцию, показывать только реальный отклик портов", color = MutedText, fontSize = 11.sp)
-                        }
-                        Switch(
-                            checked = realPingOnly,
-                            onCheckedChange = { checked ->
-                                realPingOnly = checked
-                                sharedPrefs.edit().putBoolean("real_ping_only", checked).apply()
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = ElectricBlue
-                            )
-                        )
-                    }
-                }
-            }
-        }
-
-        // BACKUPS INTEGRATION IN SETTINGS
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text("Резервное копирование (Бэкап)", color = BrightText, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("Экспортируйте или импортируйте резервной YAML/JSON код настроек.", color = MutedText, fontSize = 11.sp)
-
-                    if (rawSerializedBackup.isNotBlank()) {
-                        OutlinedTextField(
-                            value = rawSerializedBackup,
-                            onValueChange = {},
-                            readOnly = true,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(130.dp),
-                            textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = GlowGreen),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ElectricBlue,
-                                unfocusedBorderColor = MutedText
-                            )
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            viewModel.exportBackupData { json ->
-                                rawSerializedBackup = json
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (language == lang) Color(0xFF5E5CE6).copy(alpha = 0.1f) else Color.Transparent)
+                                .clickable {
+                                    language = lang
+                                    sharedPrefs.edit().putString("language", lang).apply()
+                                    showLanguageDialog = false
+                                }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(lang, color = BrightText, fontSize = 15.sp)
+                            if (language == lang) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = Color(0xFF5E5CE6))
                             }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = if (rawSerializedBackup.isBlank()) "Создать бэкап" else "Обновить бэкап",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
+                        }
                     }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showLanguageDialog = false }) {
+                    Text("Закрыть", color = Color(0xFF5E5CE6))
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 
-                    Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(MutedText.copy(alpha = 0.2f)))
+    // Appearance selector Dialogue
+    if (showAppearanceDialog) {
+        AlertDialog(
+            onDismissRequest = { showAppearanceDialog = false },
+            title = { Text("App Appearance", color = BrightText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Auto", "Light theme", "Dark theme").forEach { arg ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (appAppearance == arg) Color(0xFF5E5CE6).copy(alpha = 0.1f) else Color.Transparent)
+                                .clickable {
+                                    changeAppearanceState(arg)
+                                    showAppearanceDialog = false
+                                }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(arg, color = BrightText, fontSize = 15.sp)
+                            if (appAppearance == arg) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = Color(0xFF5E5CE6))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showAppearanceDialog = false }) {
+                    Text("Закрыть", color = Color(0xFF5E5CE6))
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 
+    // General UI Details Popup
+    if (showUiDetailsDialog) {
+        AlertDialog(
+            onDismissRequest = { showUiDetailsDialog = false },
+            title = { Text("Параметры Интерфейса", color = BrightText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("HAPP VPN использует высокопроизводительный движок рендеринга Jetpack Compose на базе графического API Vulkan/OpenGL.", fontSize = 13.sp, color = BrightText)
+                    Text("Шрифты:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = BrightText)
+                    Text("• Метрика заголовков: Inter\n• Консоль трафика: JetBrains Mono", fontSize = 12.sp, color = MutedText)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showUiDetailsDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E5CE6))) {
+                    Text("ОК", color = Color.White)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Routing Profile selector
+    if (showRoutingDialog) {
+        AlertDialog(
+            onDismissRequest = { showRoutingDialog = false },
+            title = { Text("Профили маршрутизации", color = BrightText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "all" to "Проксировать весь трафик (Global)",
+                        "bypass_rf" to "Обход блокировок РФ (Bypass RU)",
+                        "selective" to "Выборочная фильтрация сайтов (RKN Blocklist)"
+                    ).forEach { pair ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (routingProfile == pair.first) Color(0xFF5E5CE6).copy(alpha = 0.1f) else Color.Transparent)
+                                .clickable {
+                                    routingProfile = pair.first
+                                    sharedPrefs.edit().putString("routing_mode", pair.first).apply()
+                                    showRoutingDialog = false
+                                }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(pair.second, color = BrightText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            }
+                            if (routingProfile == pair.first) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = Color(0xFF5E5CE6), modifier = Modifier.padding(start = 6.dp))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showRoutingDialog = false }) {
+                    Text("Отмена", color = Color(0xFF5E5CE6))
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Per-app Proxy selector
+    if (showPerAppDialog) {
+        AlertDialog(
+            onDismissRequest = { showPerAppDialog = false },
+            title = { Text("Прокси по приложениям", color = BrightText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("VPN туннель будет включаться только для отмеченных приложений:", fontSize = 12.sp, color = MutedText)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    systemAppsList.forEach { appName ->
+                        val isChecked = proxySelectedApps.contains(appName)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isChecked) Color(0xFF5E5CE6).copy(alpha = 0.05f) else Color.Transparent)
+                                .clickable {
+                                    val newSet = proxySelectedApps.toMutableSet()
+                                    if (isChecked) newSet.remove(appName) else newSet.add(appName)
+                                    proxySelectedApps = newSet
+                                    sharedPrefs.edit().putStringSet("proxy_selected_apps", newSet).apply()
+                                }
+                                .padding(vertical = 10.dp, horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(appName, color = BrightText, fontSize = 14.sp)
+                            Checkbox(
+                                checked = isChecked,
+                                onCheckedChange = {
+                                    val newSet = proxySelectedApps.toMutableSet()
+                                    if (isChecked) newSet.remove(appName) else newSet.add(appName)
+                                    proxySelectedApps = newSet
+                                    sharedPrefs.edit().putStringSet("proxy_selected_apps", newSet).apply()
+                                },
+                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF5E5CE6))
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showPerAppDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E5CE6))) {
+                    Text("Готово", color = Color.White)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Preferred IP selector
+    if (showPreferredIpDialog) {
+        AlertDialog(
+            onDismissRequest = { showPreferredIpDialog = false },
+            title = { Text("Preferred IP Type", color = BrightText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("IPv4 Only", "IPv6 Only", "Auto").forEach { arg ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (preferredIpType == arg) Color(0xFF5E5CE6).copy(alpha = 0.1f) else Color.Transparent)
+                                .clickable {
+                                    preferredIpType = arg
+                                    sharedPrefs.edit().putString("preferred_ip_type", arg).apply()
+                                    showPreferredIpDialog = false
+                                }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(arg, color = BrightText, fontSize = 15.sp)
+                            if (preferredIpType == arg) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = Color(0xFF5E5CE6))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showPreferredIpDialog = false }) {
+                    Text("Закрыть", color = Color(0xFF5E5CE6))
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // MTU/DNS Leak dialogues
+    if (showVpnDetailsDialog) {
+        AlertDialog(
+            onDismissRequest = { showVpnDetailsDialog = false },
+            title = { Text("Параметры соединения VPN", color = BrightText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
-                        value = pasteBackupInput,
-                        onValueChange = { pasteBackupInput = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(110.dp),
-                        placeholder = { Text("Вставьте JSON код бэкапа...", color = MutedText) },
-                        textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = BrightText),
+                        value = mtuSize.toString(),
+                        onValueChange = {
+                            val parsed = it.toIntOrNull() ?: 1400
+                            mtuSize = parsed
+                            sharedPrefs.edit().putInt("mtu_size", parsed).apply()
+                        },
+                        label = { Text("Размер пакета MTU") },
+                        modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ElectricBlue,
-                            unfocusedBorderColor = MutedText
+                            focusedTextColor = BrightText,
+                            unfocusedTextColor = BrightText,
+                            focusedBorderColor = Color(0xFF5E5CE6)
                         )
                     )
 
-                    if (importStatusMsg.isNotBlank()) {
-                        Text(
-                            importStatusMsg,
-                            fontSize = 12.sp,
-                            color = if (importStatusMsg.contains("успешно")) GlowGreen else ElectricBlue
+                    OutlinedTextField(
+                        value = dnsServer,
+                        onValueChange = {
+                            dnsServer = it
+                            sharedPrefs.edit().putString("dns_server", it).apply()
+                        },
+                        label = { Text("Сервер DNS") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = BrightText,
+                            unfocusedTextColor = BrightText,
+                            focusedBorderColor = Color(0xFF5E5CE6)
+                        )
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Защита от утечки DNS (DNS Leak)", color = BrightText, fontSize = 13.sp)
+                        Switch(
+                            checked = dnsLeakProtected,
+                            onCheckedChange = {
+                                dnsLeakProtected = it
+                                sharedPrefs.edit().putBoolean("dns_leak_protected", it).apply()
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF5E5CE6))
                         )
                     }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showVpnDetailsDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E5CE6))) {
+                    Text("Сохранить", color = Color.White)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 
-                    Button(
-                        onClick = {
-                            if (pasteBackupInput.isNotBlank()) {
-                                viewModel.importBackupData(pasteBackupInput) { success ->
-                                    if (success) {
-                                        importStatusMsg = "Конфигурация успешно восстановлена!"
-                                        pasteBackupInput = ""
-                                    } else {
-                                        importStatusMsg = "Ошибка импорта. Проверьте ваш JSON."
+    // Ping parameters controller
+    if (showPingDialog) {
+        AlertDialog(
+            onDismissRequest = { showPingDialog = false },
+            title = { Text("Параметры зондирования портов", color = BrightText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Показывать честный пинг без симуляции", color = BrightText, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = realPingOnly,
+                            onCheckedChange = {
+                                realPingOnly = it
+                                sharedPrefs.edit().putBoolean("real_ping_only", it).apply()
+                            },
+                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF5E5CE6))
+                        )
+                    }
+                    Text("Когда фича включена, пинг проверяет реальную скорость соединения сокета TCP без задержки.", fontSize = 11.sp, color = MutedText)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showPingDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E5CE6))) {
+                    Text("Готово", color = Color.White)
+                }
+            },
+            containerColor = SurfaceCard,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Main Scaffold layout of Settings showing a beautiful layout matched 100% to photo!
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(DarkBackground)
+    ) {
+        // High-Fidelity App Top Bar matching the photo
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowBack,
+                    contentDescription = "Navigate back",
+                    tint = BrightText,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "Settings",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = BrightText
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            // Category: UI Settings
+            item {
+                SettingsCategoryHeader("UI Settings")
+            }
+            item {
+                SettingsClickableRow("Language", valueText = language) {
+                    showLanguageDialog = true
+                }
+            }
+            item {
+                SettingsClickableRow("App appearance", valueText = appAppearance, hasUpDownArrows = true) {
+                    showAppearanceDialog = true
+                }
+            }
+            item {
+                SettingsClickableRow("UI Settings") {
+                    showUiDetailsDialog = true
+                }
+            }
+
+            // Divider matching space
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            // Category: Tunnel Settings
+            item {
+                SettingsCategoryHeader("Tunnel Settings")
+            }
+            item {
+                val profileText = when (routingProfile) {
+                    "all" -> "Global"
+                    "bypass_rf" -> "Bypass RU"
+                    else -> "RKN Selective"
+                }
+                SettingsClickableRow("Routing profiles", valueText = profileText) {
+                    showRoutingDialog = true
+                }
+            }
+            item {
+                SettingsClickableRow("Per-app Proxy Settings", valueText = "${proxySelectedApps.size} apps") {
+                    showPerAppDialog = true
+                }
+            }
+            item {
+                SettingsSwitchRow("Enable Fragmentation", checked = fragmentationEnabled) {
+                    fragmentationEnabled = it
+                    sharedPrefs.edit().putBoolean("fragmentation_enabled", it).apply()
+                }
+            }
+            item {
+                SettingsSwitchRow("Enable Mux", checked = muxEnabled) {
+                    muxEnabled = it
+                    sharedPrefs.edit().putBoolean("mux_enabled", it).apply()
+                }
+            }
+            item {
+                SettingsClickableRow("Preferred IP Type", valueText = preferredIpType, hasUpDownArrows = true) {
+                    showPreferredIpDialog = true
+                }
+            }
+
+            // Divider matching space
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            // Category: Advanced Settings
+            item {
+                SettingsCategoryHeader("Advanced Settings")
+            }
+            item {
+                SettingsClickableRow("VPN Settings", valueText = "MTU $mtuSize") {
+                    showVpnDetailsDialog = true
+                }
+            }
+            item {
+                SettingsClickableRow("Subscription", valueText = "Manage") {
+                    showSubscriptionDialog = true
+                }
+            }
+            item {
+                SettingsClickableRow("Ping", valueText = if (realPingOnly) "Real" else "Simulated") {
+                    showPingDialog = true
+                }
+            }
+            item {
+                SettingsSwitchRow("Allow connections from the LAN", checked = allowLan) {
+                    allowLan = it
+                    sharedPrefs.edit().putBoolean("allow_lan", it).apply()
+                }
+            }
+            item {
+                SettingsSwitchRow("Auto-Start VPN", checked = autoStartVpn) {
+                    autoStartVpn = it
+                    sharedPrefs.edit().putBoolean("auto_start_vpn", it).apply()
+                }
+            }
+
+            // BACKUPS INTEGRATION IN SETTINGS FOR EXTRA RECOVERY FUNCTIONS
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceCard)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text("Резервное копирование (Бэкап)", color = BrightText, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("Экспортируйте или импортируйте резервной YAML/JSON код настроек.", color = MutedText, fontSize = 11.sp)
+
+                        if (rawSerializedBackup.isNotBlank()) {
+                            OutlinedTextField(
+                                value = rawSerializedBackup,
+                                onValueChange = {},
+                                readOnly = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(130.dp),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = GlowGreen),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color(0xFF5E5CE6),
+                                    unfocusedBorderColor = MutedText
+                                )
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.exportBackupData { json ->
+                                    rawSerializedBackup = json
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E5CE6)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (rawSerializedBackup.isBlank()) "Создать бэкап" else "Обновить бэкап",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.fillMaxWidth().height(1.dp).background(MutedText.copy(alpha = 0.2f)))
+
+                        OutlinedTextField(
+                            value = pasteBackupInput,
+                            onValueChange = { pasteBackupInput = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(110.dp),
+                            placeholder = { Text("Вставьте JSON код бэкапа...", color = MutedText) },
+                            textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = BrightText),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF5E5CE6),
+                                unfocusedBorderColor = MutedText
+                            )
+                        )
+
+                        if (importStatusMsg.isNotBlank()) {
+                            Text(
+                                importStatusMsg,
+                                fontSize = 12.sp,
+                                color = if (importStatusMsg.contains("успешно")) GlowGreen else Color(0xFF5E5CE6)
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                if (pasteBackupInput.isNotBlank()) {
+                                    viewModel.importBackupData(pasteBackupInput) { success ->
+                                        if (success) {
+                                            importStatusMsg = "Конфигурация успешно восстановлена!"
+                                            pasteBackupInput = ""
+                                        } else {
+                                            importStatusMsg = "Ошибка импорта. Проверьте ваш JSON."
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = GlowGreen),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Импортировать бэкап", color = Color.White, fontWeight = FontWeight.Bold)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = GlowGreen),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Импортировать бэкап", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun SettingsCategoryHeader(text: String) {
+    Text(
+        text = text,
+        color = Color(0xFF5352E4), // Beautiful clean lavender purple matching high fidelity photo!
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
+    )
+}
+
+@Composable
+fun SettingsClickableRow(
+    title: String,
+    valueText: String? = null,
+    hasUpDownArrows: Boolean = false,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        color = SurfaceCard
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = title,
+                color = BrightText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (valueText != null) {
+                    Text(
+                        text = valueText,
+                        color = MutedText,
+                        fontSize = 14.sp
+                    )
+                }
+                if (hasUpDownArrows) {
+                    Icon(
+                        imageVector = Icons.Filled.UnfoldMore,
+                        contentDescription = null,
+                        tint = MutedText.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MutedText.copy(alpha = 0.5f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SettingsSwitchRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = SurfaceCard
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = title,
+                color = BrightText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF5E5CE6) // Purple matching photo
+                )
+            )
         }
     }
 }

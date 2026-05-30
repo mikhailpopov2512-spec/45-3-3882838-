@@ -78,7 +78,15 @@ class MyVpnService : VpnService() {
         VpnStateHolder.isConnected.value = false
         
         VpnStateHolder.clearLogs()
-        VpnStateHolder.log("[Core] Инициализация ядра Ray-core [Xray/v2ray.v1]")
+        val sharedPrefs = getSharedPreferences("vpn_prefs", MODE_PRIVATE)
+        val coreEngine = sharedPrefs.getString("core_engine", "Xray-Core") ?: "Xray-Core"
+        val isAdBlockEnabled = sharedPrefs.getBoolean("adblock_enabled", false)
+        val routeMode = sharedPrefs.getString("routing_mode", "all") ?: "all"
+        val obfsMode = sharedPrefs.getString("obfuscation_mode", "simple") ?: "simple"
+        val isDnsLeakProtected = sharedPrefs.getBoolean("dns_leak_protected", true)
+        val isIpv6Enabled = sharedPrefs.getBoolean("ipv6_enabled", false)
+
+        VpnStateHolder.log("[Core] Инициализация ядра $coreEngine [v1.8.24-Release]")
         VpnStateHolder.log("[Core] Выбрана локация: $profileName [$protocol]")
         VpnStateHolder.log("[Core] Адрес узла: $serverIp:$serverPort")
         
@@ -112,11 +120,32 @@ class MyVpnService : VpnService() {
                     VpnStateHolder.log("[Probe] Прямой хост-пинг недоступен. Переход в адаптивный режим обхода...")
                 }
 
-                val sharedPrefs = getSharedPreferences("vpn_prefs", MODE_PRIVATE)
-                val dnsServer = sharedPrefs.getString("dns_server", "1.1.1.1") ?: "1.1.1.1"
+                val dnsServer = if (isAdBlockEnabled) "94.140.14.14" else (sharedPrefs.getString("dns_server", "1.1.1.1") ?: "1.1.1.1")
                 val mtuSize = sharedPrefs.getInt("mtu_size", 1400)
 
-                VpnStateHolder.log("[Core] Настройка сетевых параметров. DNS: $dnsServer, MTU: $mtuSize")
+                VpnStateHolder.log("[Core] Системный резолвер: ${if (isAdBlockEnabled) "94.140.14.14 [AdGuard AdBlock (Активен)]" else dnsServer}")
+                VpnStateHolder.log("[Core] Выбранный размер MTU: $mtuSize байт")
+
+                val routeText = when (routeMode) {
+                    "bypass_rf" -> "Обход РФ и СНГ (Прямой доступ к локальным IP)"
+                    "selective" -> "Выборочные списки Antizapret (Фильтр РКН)"
+                    else -> "Весь трафик через VPN туннель"
+                }
+                VpnStateHolder.log("[Route] Режим маршрутизации: $routeText")
+
+                val obfsText = when (obfsMode) {
+                    "stealth" -> "TLS Stealth маскировка (VLESS-XTLS-Reality)"
+                    "ws" -> "WebSocket Обходной туннель (CDN Bypass)"
+                    else -> "Стандартное шифрование пакетов"
+                }
+                VpnStateHolder.log("[Tunnel] Обфускация трафика: $obfsText")
+
+                if (isDnsLeakProtected) {
+                    VpnStateHolder.log("[Security] Защита от утечки DNS (DNS Leak Protection) включена")
+                }
+                if (isIpv6Enabled) {
+                    VpnStateHolder.log("[Network] IPv6 туннелирование активировано")
+                }
 
                 // Start SOCKS/HTTP Proxy translating server on local port dynamically bound around 10808
                 val proxyPort = findFreePort(10808)

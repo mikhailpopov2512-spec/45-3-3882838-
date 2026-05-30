@@ -45,6 +45,16 @@ class VpnViewModel(private val repository: VpnRepository) : ViewModel() {
 
     init {
         refreshCurrentIp()
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.delay(800)
+                if (subscriptions.value.isEmpty()) {
+                    addSubscription("subsription1", "vless://de-sub@de1.happvpn.site:443#🇩🇪 DE Frankfurt VLESS") { _ -> }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun refreshCurrentIp() {
